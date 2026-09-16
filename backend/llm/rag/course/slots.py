@@ -3,13 +3,18 @@
 코스를 가장 크게 바꾸는 건 음식 종류보다 **누구랑 가느냐** 다.
 "애기랑 잠실 코스" 와 "회사 사람들이랑 잠실 코스" 는 같은 구장·같은 경기라도 답이 달라야 한다.
 
-슬롯 4개
+슬롯 6개
     prefs      치킨·카페·술 같은 취향 → 후보 점수 가산
     companion  아이·부모님·연인·혼자·회사·친구 → ban(제외) · boost(가산) · 반경 축소 · 안내 문구
     spare      tight(퇴근하고 바로) · normal · long(낮부터) → BEFORE 개수·명소 포함 여부
     retry      "다른 데 없어?" → 직전 추천 장소를 후보에서 뺀다
+    scope      before(경기 전만) · after(경기 후만) · both → 그 구간만 짠다
+    mode       walk · car · transit (transport.py) → 구간 시간 · 주차/대중교통 안내 · 운전이면 술집 제외
 """
 import re
+
+from . import transport
+from ..nearby.agent import kinds_of as _nearby_kinds
 
 # ── 취향 (음식·활동) : 질문 표현 → external_places 의 category_detail 에서 찾을 말 ──────
 PREFERENCE = {
@@ -93,6 +98,30 @@ _PREV_LIST = re.compile(r"^[-·•]\s*(?:경기\s*전|경기\s*관람|경기\s*�
 _PREV_TIME = re.compile(r"^\s*(?:익일\s*)?\d{1,2}:\d{2}\s{1,4}(.+?)\s*(?:\(\d+분\)|입장|—|$)", re.M)
 
 
+# ── 범위 (경기 전만 / 경기 후만) ─────────────────────────────────────────────
+# "일식이랑 카페 먹고 경기장 갈 거야" 는 경기 전만 묻는 말이다 — 경기 후 장소를 붙이면 안 된다.
+BOTH = re.compile(r"전\s*후|앞\s*뒤|하루\s*종일|처음부터\s*끝까지")
+BEFORE_ONLY = re.compile(
+    r"경기\s*(보기|시작)?\s*전(에|에만|만)|경기\s*전\s*코스|(구장|경기장|야구장)\s*(가기|들어가기)\s*전|"
+    r"(먹고|마시고|들렀다가?|갔다가?|구경하고|놀다가?|산책하고)\s*(나서\s*)?([가-힣A-Za-z]{1,6}\s*)?"
+    r"(경기장|야구장|구장|경기|직관|야구)\s*(보러\s*)?(갈|가|들어|입장)")
+AFTER_ONLY = re.compile(
+    r"(경기|야구|직관)\s*(끝나고|끝난\s*(뒤|후)|후(?!기)에?만?|마치고|보고\s*나서|본\s*(뒤|후))|끝나고|뒤풀이")
+
+
+def scope_of(question: str) -> str:
+    """'before' | 'after' | 'both'. 한쪽만 분명할 때만 좁힌다 (애매하면 both)."""
+    q = question or ""
+    if BOTH.search(q):
+        return "both"
+    before, after = bool(BEFORE_ONLY.search(q)), bool(AFTER_ONLY.search(q))
+    if before and not after:
+        return "before"
+    if after and not before:
+        return "after"
+    return "both"
+
+
 def companion_of(question: str):
     """동행 키 (없으면 None). 여러 개 걸리면 제약이 센 쪽(아이 > 부모님 > 나머지)을 쓴다."""
     hits = [k for k, rx in _COMPANION_RE.items() if rx.search(question)]
@@ -134,17 +163,29 @@ def parse(question: str, history=None) -> dict:
     key = companion_of(question)
     comp = COMPANION.get(key) or {}
     retry = bool(RETRY.search(question))
+    mode = transport.mode_of(question)
+    if mode is None:                    # "아까 차로 간다고 했잖아" — 이번 질문에 없으면 직전 사용자 말에서 잇는다
+        for m in reversed(history or []):
+            if m.get("role") == "user" and (mode := transport.mode_of(m.get("content") or "")):
+                break
+    taxi = transport.is_taxi(question)
+    ban = list(dict.fromkeys(list(comp.get("ban") or []) + transport.ban_words(mode, taxi)))
     return {
         "prefs": preferences(question),
         "companion": key,
         "companionLabel": comp.get("label"),
-        "ban": list(comp.get("ban") or []),
+        "ban": ban,
         "boost": list(comp.get("boost") or []),
         "radius": comp.get("radius"),
         "note": comp.get("note"),
         "spare": spare_of(question),
         "retry": retry,
         "exclude": previous_places(history) if retry else set(),
+        "scope": scope_of(question),
+        # RAG 에 없는 종류 — 카카오 실시간 후보를 더한다 (편의점은 코스에 넣지 않는다)
+        "extras": [k for k in _nearby_kinds(question) if k in ("stay", "walk", "indoor")],
+        "mode": mode,
+        "taxi": taxi,
     }
 
 
@@ -159,6 +200,25 @@ def prompt_line(slots: dict) -> str:
         bits.append("여유: 촉박함 (경기 전은 한 곳만, 구장 가까운 곳으로)")
     elif slots["spare"] == "long":
         bits.append("여유: 넉넉함 (경기 전에 명소·산책을 한 곳 넣어도 좋음)")
+    if slots.get("scope") == "before":
+        bits.append("범위: 경기 전만 (AFTER 는 고르지 말고, BEFORE 를 취향 개수만큼 1~3곳)")
+    elif slots.get("scope") == "after":
+        bits.append("범위: 경기 후만 (BEFORE 는 고르지 말고, AFTER 를 1~3곳)")
+    if slots.get("mode") == "car" and slots.get("taxi"):
+        bits.append("이동: 택시")
+    elif slots.get("mode") == "car":
+        bits.append("이동: 자동차 (운전하므로 술집·주류 위주 장소는 고르지 말 것)")
+    elif slots.get("mode") == "transit":
+        bits.append("이동: 대중교통")
+    elif slots.get("mode") == "walk":
+        bits.append("이동: 도보")
+    extras = slots.get("extras") or []
+    if "stay" in extras:
+        bits.append("추가 요청: 숙박 — 코스 맨 마지막(AFTER 끝)에 [STAY] 후보 1곳")
+    if "walk" in extras:
+        bits.append("추가 요청: 산책 — [WALK] 후보 1곳을 코스에 넣을 것")
+    if "indoor" in extras:
+        bits.append("추가 요청: 실내 놀거리 — [INDOOR] 후보 1곳을 코스에 넣을 것")
     if slots["retry"]:
         bits.append("재추천: 앞서 추천한 곳은 후보에서 빠졌으니 새로 골라 줄 것")
     return " / ".join(bits)

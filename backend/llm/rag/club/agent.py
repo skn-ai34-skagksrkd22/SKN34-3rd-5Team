@@ -8,7 +8,7 @@ rag_test/chain.py 의 서비스 모드(SV)를 Django + LangChain 으로 옮긴 �
 import os
 import re
 import time
-from datetime import date
+from datetime import date, timedelta
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -17,11 +17,18 @@ from . import structured
 from .prompts import FEW_SHOT, FIXED, SYSTEM, WARN_SUFFIX
 from .retrieval import date_tokens, embed, keyword_rerank, search
 from .router import PLACE_ALIAS, TEAM_ALIAS, detect_categories, detect_stadium
+from ..domain_tools import invoke as invoke_domain_tool, run_model
 
 READY = True
 LLM_MODEL = os.getenv("LLM_MODEL") or "gpt-5.6-luna"
 
 _llm = None
+
+_TEAM_NAME = {"LG": "LG", "DOOSAN": "두산", "KIWOOM": "키움", "SSG": "SSG", "KT": "KT",
+              "HANWHA": "한화", "SAMSUNG": "삼성", "KIA": "KIA", "LOTTE": "롯데", "NC": "NC"}
+_STADIUM_PLACE = {"잠실": "잠실구장", "고척": "고척구장", "문학": "문학구장", "랜더스": "문학구장",
+                  "수원": "수원구장", "대전": "대전구장", "대구": "대구구장", "광주": "광주구장",
+                  "사직": "사직구장", "창원": "창원구장"}
 
 
 def llm():
@@ -39,9 +46,62 @@ def _to_lc(messages):
 
 def call_llm(messages):
     t0 = time.perf_counter()
-    out = llm().invoke(_to_lc(messages)).content
+    out = run_model(llm(), _to_lc(messages), "club").content
     text = out if isinstance(out, str) else "".join(p.get("text", "") for p in out if isinstance(p, dict))
     return text or "", (time.perf_counter() - t0) * 1000
+
+
+def answer_community_tools(question, history, timing, route):
+    messages = [SystemMessage(content=(
+        "공개 커뮤니티 글과 팬 승부예측 조회 담당이다. search_community_posts 또는 get_prediction_games를 "
+        "반드시 호출하고 그 결과만 근거로 답한다. 팬 투표 비율은 실제 승리 확률이 아니라고 밝힌다."
+    )), *_to_lc(history[-4:]), HumanMessage(content=question)]
+    t0 = time.perf_counter()
+    response = run_model(
+        llm(), messages, "club", tool_names={"search_community_posts", "get_prediction_games"},
+        require_first_tool=True,
+    )
+    timing["tool_ms"] = round((time.perf_counter() - t0) * 1000)
+    text = response.content if isinstance(response.content, str) else "".join(
+        part.get("text", "") for part in response.content if isinstance(part, dict))
+    route.append("domain_tools:community")
+    return {"answer": text, "sources": [], "route": " ".join(route), "timing": timing}
+
+
+def _tool_standings(result):
+    if not isinstance(result, dict):
+        return None
+    as_of = str(result.get("actual_date") or "")
+    rows = []
+    for item in result.get("items", []):
+        wins, losses, draws = item["wins"], item["losses"], item["draws"]
+        games = wins + losses + draws
+        rows.append({
+            "team": _TEAM_NAME.get(item["team__team_code"], item["team__team_code"]), "rank": item["rank"],
+            "games": games, "win": wins, "lose": losses, "draw": draws,
+            "rate": f"{wins / (wins + losses):.3f}" if wins + losses else "0.000",
+            "gb": str(item["games_behind"]), "as_of": as_of,
+        })
+    return rows
+
+
+def _tool_games(result):
+    if not isinstance(result, dict):
+        return None
+    rows = []
+    for item in result.get("items", []):
+        stadium = item.get("stadium__stadium_name_ko") or ""
+        place = next((value for key, value in _STADIUM_PLACE.items() if key in stadium), stadium)
+        home = _TEAM_NAME.get(item.get("home_team__team_code"), item.get("home_team__team_name_ko") or "")
+        away = _TEAM_NAME.get(item.get("away_team__team_code"), item.get("away_team__team_name_ko") or "")
+        home_score, away_score = item.get("home_score"), item.get("away_score")
+        score = f"{away} {away_score} - {home} {home_score}" if None not in (home_score, away_score) else ""
+        rows.append({
+            "date": str(item["game_date"]), "time": str(item.get("game_time") or "")[:5], "place": place,
+            "away": away, "home": home, "canceled": item.get("status_code") in {"cancelled", "postponed"},
+            "status": item.get("status_code") or "", "score": score, "as_of": str(item["game_date"]),
+        })
+    return rows
 
 
 # ── 근거 등급 (status 13종 → 4등급) ─────────────────────────────────────────
@@ -77,6 +137,7 @@ CARRY_OVER = NEED_STADIUM | {"CARRY_IN"}   # 구장 이어받기 대상
 WARN = re.compile(r"비공식|제보 기준|공식 확인 전|확인되지 않|정확하지 않을|달라질 수|다를 수|바뀔 수|재확인|방문 전.{0,6}확인|가시기 전.{0,10}확인|현장.{0,8}확인")
 REFUSE = re.compile(r"확인한 자료|찾을 수 없|알 수 없|확인할 수 없|확인이 어렵|확인 불가|"
                     r"안내드리기 어렵|답변드리기 어렵|포함되어 있지 않|예매처에 문의|(자료|일정|정보|기록)[^.\n]{0,25}없")
+DOMAIN_TOOL_QUESTION = re.compile(r"커뮤니티|게시판|게시글|팬\s*투표|승부\s*예측|승부예측|투표율|투표\s*(?:현황|결과)")
 
 # ── 후속 질문 재구성: "그럼 사직은?" → "사직 경기 몇대몇이야?" ────────────────────
 ALL_STADIUM = re.compile(
@@ -198,25 +259,48 @@ def answer(question, history=None, hint_stadium=None):
         route.append(f"rewrite:{rewritten}")
         question = rewritten
 
+    if DOMAIN_TOOL_QUESTION.search(question):
+        return answer_community_tools(question, history, timing, route)
+
     # 1. 순위·일정만 물었으면 DB 직접 조회 (LLM 0회)
     other_intent = set(detect_categories(question)) - {"SCHEDULE", "STANDING"}
     if not other_intent:
         t0 = time.perf_counter()
+        categories = set(detect_categories(question))
+        standing_rows = game_rows = None
+        warning = None
+        if "STANDING" in categories:
+            result = invoke_domain_tool("club", "get_standings", {"snapshot_date": structured.date_in(question, today)})
+            standing_rows, warning = _tool_standings(result), result.get("warning") if isinstance(result, dict) else None
+        if "SCHEDULE" in categories:
+            target = structured.date_in(question, today)
+            start = date.fromisoformat(target) if target else date.fromisoformat(today)
+            result = invoke_domain_tool("club", "get_games", {
+                "start_date": start.isoformat(), "end_date": (start if target else start + timedelta(days=31)).isoformat(),
+            })
+            game_rows = _tool_games(result)
+            warning = warning or (result.get("warning") if isinstance(result, dict) else None)
         fixed = structured.answer(question, today, hint_team=prev_team,
-                                  hint_place=structured.STADIUM_PLACE.get(prev_stadium), hint_date=prev_date)
+                                  hint_place=structured.STADIUM_PLACE.get(prev_stadium), hint_date=prev_date,
+                                  game_rows=game_rows, standing_rows=standing_rows)
         timing["structured_ms"] = round((time.perf_counter() - t0) * 1000)
         if fixed:
+            if warning:
+                fixed = f"{fixed}\n{warning}"
             return {"answer": fixed, "sources": [], "route": "structured", "timing": timing}
 
     # 2. 슬롯 · 가드
     stadium, cats = detect_stadium(question), detect_categories(question)
+    own_cats = bool(cats)
     multi = bool(ALL_STADIUM.search(question))
     if not cats:
         cats = cats_from_history(history)
     if multi:
         stadium, prev_stadium = None, None
         route.append("multi_stadium")
-    if stadium is None and prev_stadium and not multi and (not cats or set(cats) & CARRY_OVER):
+    # 이번 질문에 카테고리가 없으면(이전 질문에서 빌려 온 경우) 구장은 그대로 이어받는다.
+    # 예전에는 "광주경기보러…" 의 "경기"(SCHEDULE) 때문에 이어받기가 막혀 전 구장을 검색했다 (2026-09-15)
+    if stadium is None and prev_stadium and not multi and (not own_cats or not cats or set(cats) & CARRY_OVER):
         stadium = prev_stadium
         route.append(f"carry:{stadium}")
     guard = ("refund" if REFUND.search(question) else

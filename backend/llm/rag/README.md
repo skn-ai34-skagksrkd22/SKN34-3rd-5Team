@@ -43,7 +43,7 @@ self.chain.stream({"question": q, "chat_history": messages}) -> str 청크들
 import 1줄 + chain 고르는 1줄이 전부다. 회원(`/chat/sessions/{id}/messages/`)·게스트(`/chat/guest/`)
 두 경로 모두 여기로 들어온다.
 
-- `CHAT_USE_RAG=0`(기본) 이면 `chat_chain()` 이 None → 예전 helpful-assistant 체인 그대로
+- 스위치 없음 (2026-09-15): 챗봇은 항상 `assistant` 파이프라인(프롬프트 · RAG · 에이전트[야구 DB 읽기 전용 도구] · 파서)으로 답한다. 테스트 러너 안에서만 `chat_chain()` 이 None
 - Django 테스트 DB(`test_*`) 로 도는 동안은 자동으로 꺼진다 (기존 회귀 테스트 보호)
 - RAG 는 답을 한 번에 만들므로 `.stream()` 은 완성된 답을 잘라서 흘린다 → SSE 계약·프론트 그대로
 - `places` · `coursePayload` 처럼 문자열 말고 전부가 필요하면 `chain.detail(...)` 또는 `pipeline.answer(...)`

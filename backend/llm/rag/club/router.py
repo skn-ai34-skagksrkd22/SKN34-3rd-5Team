@@ -72,7 +72,9 @@ CATEGORY_KEYWORDS = {
 
 
 def _hits(q: str, table: dict) -> set:
-    return {code for code, words in table.items() if any(w.upper() in q for w in words)}
+    """띄어쓰기는 무시하고 비교한다 ("챔피언스 필드" 도 "챔피언스필드" 로 잡히게)."""
+    q = q.replace(" ", "")
+    return {code for code, words in table.items() if any(w.upper().replace(" ", "") in q for w in words)}
 
 
 def detect_stadium(question: str) -> str | None:

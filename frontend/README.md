@@ -17,7 +17,7 @@ npm run dev
 
 팀 Docker 환경은 저장소 루트에서 `docker compose up -d --build`로 실행합니다. 이번 변경에서 한글 글꼴 패키지 `@fontsource-variable/noto-sans-kr`를 추가했으므로 의존성 설치 또는 재빌드가 필요합니다. 전체 Docker 환경 구동은 별도 확인이 필요합니다.
 
-지도 기능을 로컬 Node로 실행할 때는 `frontend/.env.example`을 참고해 `frontend/.env.local`을 설정합니다. 팀 Docker에서는 루트 `.env.example`을 참고해 루트 `.env`에 `NEXT_PUBLIC_KAKAO_MAP_KEY`, `KAKAO_REST_API_KEY`, `TOUR_API_KEY`를 설정합니다. Compose가 세 변수를 Next 컨테이너에 전달하며 Docker 환경변수가 `.env.local`보다 우선합니다. JavaScript 키만 공개 변수로 쓰고 REST·관광공사 키는 서버 전용으로 유지합니다. 배포 주소도 카카오 JavaScript SDK 도메인에 등록해야 합니다.
+지도 기능을 로컬 Node로 실행할 때는 `frontend/.env.example`을 참고해 `frontend/.env.local`에 공개 JavaScript 키만 설정합니다. 팀 Docker에서는 루트 `.env.example`의 `NEXT_PUBLIC_KAKAO_MAP_KEY`, `KAKAO_REST_API_KEY`, `TOUR_API_KEY`를 사용하며 REST·관광공사 키는 Django backend에만 전달됩니다. 배포 주소도 카카오 JavaScript SDK 도메인에 등록해야 합니다.
 
 ## 화면과 현재 동작
 
@@ -39,7 +39,7 @@ UI/UX 가이드의 큰 항목 2~5에 맞춰 여섯 기본 화면, 반응형, 로
 
 코스·좋아요·조회 수는 현재 브라우저의 로컬 저장소에 보관됩니다. 내 코스는 내용을 복사하거나 다른 앱에 보내 공유할 수 있으며, 서버에 공개 게시글로 등록되지는 않습니다. 샘플 코스는 예시이고, 구장 사진은 실제 해당 구장의 사진이 아닌 분위기 이미지입니다. 사진 출처는 `public/images/SOURCES.md`에 있습니다.
 
-경기 일정·선발 투수·순위는 티빙 공개 데이터를 Next 서버에서 공통 수집하며 메인과 상세 페이지가 같은 자료를 사용합니다. 경기 전·무경기일은 1시간, 경기 시작부터 완료 확인까지는 5분 간격이며 수집 실패 시 마지막 성공 자료를 유지합니다. 과거 일정은 2026년 범위로 보관하고 서버 시작 시 저장된 예정 시각과 무관하게 오늘 자료를 한 번 확인합니다. 현재 저장은 서버의 로컬 파일을 사용합니다. 설정과 백엔드 인계 방법은 [KBO 수집 안내](docs/KBO_DATA.md)를 참고하세요.
+경기 일정·선발 투수·팀·개인 순위와 팀·선수 상세는 브라우저가 `/api/tving/`으로 Django에 직접 요청합니다. Django가 TVING 공개 응답을 검증하고 기존 `Team`·`Game`·`StandingHistory`와 선수 관계형 엔티티를 조건부 갱신하며, 실패 시 완전한 저장본만 `stale`로 구분해 반환합니다. Next 서버에는 수집 타이머나 로컬 snapshot writer가 없습니다. 설정과 callable 도구 계약은 [KBO 데이터 안내](docs/KBO_DATA.md)와 [TVING 도구 인계](../docs/TVING_TOOLS_HANDOFF.md)를 참고하세요.
 
 ## 챗봇
 
@@ -49,8 +49,8 @@ UI/UX 가이드의 큰 항목 2~5에 맞춰 여섯 기본 화면, 반응형, 로
 
 - 회원·소셜 로그인 API, 세션과 작성자 권한 연결. 현재 로그인 성공 처리는 하지 않습니다.
 - 게시글·좋아요·페이지 조회 API 연결. 현재 로컬 저장소는 `lib/routes.ts`에 모았습니다.
-- 카카오 지도·장소 검색은 로컬에서 연결을 확인했습니다. 배포 시 JavaScript SDK 도메인을 등록하고 구장 경계 필터를 검증해야 합니다. 설정·카테고리·표시 한도·데이터 한계는 [직접 코스 작성 안내](docs/NEARBY_PLANNER.md)를 참고하세요.
-- 관광공사 장소도 동일한 반경에 합쳐 표시합니다. Next 서버 전용 `TOUR_API_KEY` 설정이 필요하며, 출처 표시·중복 제거와 오류 시 재시도를 지원합니다.
+- 카카오 지도는 브라우저 SDK를 쓰고 장소 검색은 `/api/places/search/` Django API를 직접 호출합니다. 검색 결과 저장도 백엔드가 담당합니다. 배포 시 JavaScript SDK 도메인을 등록하고 구장 경계 필터를 검증해야 합니다.
+- 관광공사 장소는 `/api/tourism/` Django API로 조회하며 기존 `Place` 원장과 provider 전용 OneToOne metadata를 사용합니다. 두 서버 키 모두 Next에 전달하지 않습니다.
 - CKEditor 5 라이선스 설정과 이미지 업로드. 사용자가 라이선스 없이 우선 진행하기로 선택해 현재는 일반 본문 입력을 사용하며, `components/editor.tsx`에 라이선스 설정 어댑터를 준비했습니다.
 - 챗봇의 팀 RAG·경기 정보·지도 데이터 연결과 답변 검증. 작성 화면의 코스 예시는 미리 작성된 내용입니다.
 - 서비스 정책 문구 확정. 회원가입 화면의 정책 안내는 초안입니다.

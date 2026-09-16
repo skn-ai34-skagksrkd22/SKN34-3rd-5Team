@@ -33,16 +33,18 @@ PHASE_KO = {"BEFORE": "경기 전", "GAME": "경기 관람", "AFTER": "경기 �
 
 
 def course_payload(places, *, stadium_ko=None, game=None, walk_summary="",
-                   total_min=0, slots_info=None):
+                   total_min=0, slots_info=None, travel_info=None):
     """places[] (챗봇 답변) → POST /courses/ 에 그대로 넣을 수 있는 dict.
 
     places      agent.answer() 가 돌려준 목록 (phase·name·lat·lng·category·address·placeId·time·stayMin·reason)
     game        {"date","time","home","away"} | None
     slots_info  slots.parse() 결과 (태그용). 없어도 된다
+    travel_info transport.info() 결과 (이동수단 태그·주차/교통 안내 줄). 없어도 된다
     반환        {"title","stadium","content","contentFormat","duration","tags","startLat","startLng","stops"}
                 좌표가 없는 장소는 stops 에서 빠진다 (CourseStop 은 lat/lng 가 필수라 400 이 난다)
     """
     sl = slots_info or {}
+    tr = travel_info or {}
     usable = [p for p in places if p.get("lat") is not None and p.get("lng") is not None][:MAX_STOPS]
 
     stops = [{
@@ -60,10 +62,10 @@ def course_payload(places, *, stadium_ko=None, game=None, walk_summary="",
     return {
         "title": _title(stadium_ko, game, sl.get("companionLabel"))[:MAX_TITLE],
         "stadium": (stadium_ko or "")[:MAX_STADIUM],
-        "content": _content(usable, game, walk_summary, sl)[:MAX_CONTENT],
+        "content": _content(usable, game, walk_summary, sl, tr)[:MAX_CONTENT],
         "contentFormat": "",                             # 일반 텍스트 (choices 는 "" 아니면 "html")
         "duration": _duration(total_min)[:MAX_DURATION],
-        "tags": _tags(game, sl),
+        "tags": _tags(game, sl, tr),
         "startLat": first.get("lat"),
         "startLng": first.get("lng"),
         "stops": stops,
@@ -89,7 +91,7 @@ def _duration(total_min):
     return f"약 {h}시간" if h else f"약 {m}분"
 
 
-def _tags(game, sl):
+def _tags(game, sl, tr=None):
     """검색·필터용 태그. 중복 없이, 빈 값 없이."""
     tags = ["직관코스", "챗봇추천"]
     if game:
@@ -97,11 +99,13 @@ def _tags(game, sl):
         tags.append("야간경기" if game.get("time", "") >= "17:00" else "낮경기")
     if sl.get("companionLabel"):
         tags.append(sl["companionLabel"])
+    if (tr or {}).get("mode") in ("car", "transit"):
+        tags.append("택시" if tr.get("taxi") else tr.get("label"))
     tags += list(dict.fromkeys(sl.get("prefs") or []))[:3]
     return [t for t in dict.fromkeys(tags) if t and t != "vs"]
 
 
-def _content(places, game, walk_summary, sl):
+def _content(places, game, walk_summary, sl, tr=None):
     """Course.content — 타임라인 글. CourseStop 에 자리가 없는 시각·이유가 여기 들어간다."""
     lines = []
     if game:
@@ -114,7 +118,9 @@ def _content(places, game, walk_summary, sl):
     if walk_summary:
         lines.append("")
         lines.append(walk_summary)
+    lines += (tr or {}).get("lines") or []
     if sl.get("note"):
         lines.append(sl["note"])
+    lines += (tr or {}).get("notes") or []
     lines.append("카카오맵 기준 정보라 가시기 전에 영업 여부만 한 번 확인해 보세요!")
     return "\n".join(lines)

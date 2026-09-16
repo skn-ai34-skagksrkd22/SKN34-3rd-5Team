@@ -17,6 +17,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from .models import Course, CourseReaction, CourseView
+from .directions_provider import DirectionsError, fetch_directions
 from .serializers import (
     CourseCreateRequestSerializer,
     CourseCreateResultSerializer,
@@ -26,6 +27,9 @@ from .serializers import (
     CourseResponseSerializer,
     CourseSerializer,
     CourseViewResultSerializer,
+    DirectionsErrorSerializer,
+    DirectionsRequestSerializer,
+    DirectionsResponseSerializer,
 )
 
 
@@ -183,3 +187,27 @@ class CourseViewView(CourseWriteProtectionMixin, APIView):
         course.refresh_from_db(fields=("views",))
         data = CourseViewResultSerializer({"views": course.views}).data
         return Response(data)
+
+
+class ExternalRequestMixin:
+    parser_classes = (JSONParser,)
+    permission_classes = (AllowAny,)
+
+    def initial(self, request, *args, **kwargs):
+        length = request.META.get("CONTENT_LENGTH", "")
+        if (length and not length.isdecimal()) or int(length or 0) > 12000 or len(request.body) > 12000:
+            raise CoursePayloadTooLarge("요청 내용이 너무 큽니다.")
+        return super().initial(request, *args, **kwargs)
+
+
+class DirectionsView(ExternalRequestMixin, APIView):
+    @extend_schema(request=DirectionsRequestSerializer, responses={200: DirectionsResponseSerializer, 400: DirectionsErrorSerializer, 413: DirectionsErrorSerializer, 415: DirectionsErrorSerializer, 429: DirectionsErrorSerializer, 502: DirectionsErrorSerializer, 503: DirectionsErrorSerializer}, auth=[])
+    def post(self, request):
+        serializer = DirectionsRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        values = dict(serializer.validated_data)
+        values.pop("action", None)
+        try:
+            return Response(fetch_directions(**values))
+        except DirectionsError as exc:
+            return Response({"error": "지도 데이터 연결 설정이 필요해요." if exc.status == 503 else "길찾기 조회에 실패했어요."}, status=exc.status)

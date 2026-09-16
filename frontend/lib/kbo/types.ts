@@ -98,7 +98,7 @@ export type KboSnapshot = KboSourceData & {
   fetchedAt: string;
   updatedAt: string;
   nextCheckAt: string;
-  mode: "hourly" | "five-minute" | "final-check";
+  mode: "hourly" | "five-minute" | "final-check" | "fixed-interval";
   source: { name: string; url: string };
   stale: boolean;
   warning: string | null;

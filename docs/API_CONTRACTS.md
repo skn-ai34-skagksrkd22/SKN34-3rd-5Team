@@ -20,10 +20,6 @@ CONTRACT_PYTHON=/path/to/python node --test tests/contracts-strict.test.mjs
 
 두 명령은 `PYTHON_DOTENV_DISABLED=1`과 합성 DB/메일 설정으로 스키마를 생성하므로 실제 `.env`를 읽거나 DB/메일 네트워크를 사용하지 않는다. `contracts:generate`는 여러 domain이 annotation을 작성하는 중에도 부분 스키마를 갱신할 수 있지만 경고와 오류를 그대로 출력한다. `contracts:check`는 `--fail-on-warn`으로 schema 경고/오류가 하나라도 있으면 즉시 실패하며, 경고가 없을 때만 새 결과와 체크인 파일을 바이트 단위로 비교한다.
 
-현재 커뮤니티 백엔드 통합에서는 `contracts/openapi.yaml`까지 갱신했다. 대응하는
-`frontend/lib/api/schema.d.ts` 생성은 후속 프론트 작업 범위이므로 아직 이전 상태이며,
-그 파일을 생성하기 전 `contracts:check`는 stale contract로 실패하는 것이 정상이다.
-
 ## 커뮤니티 임시저장·이미지 계약
 
 - `GET|POST /api/community/drafts/`, `GET|PATCH|DELETE /api/community/drafts/{draft_id}/`는 JWT 소유자 범위다. 목록은 항상 `count`, `next`, `previous`, `results` 페이지 형태이며 링크는 공개 `/api` 경로를 사용한다.

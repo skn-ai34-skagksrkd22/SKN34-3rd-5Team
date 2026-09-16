@@ -44,4 +44,5 @@ urlpatterns = [
     path("chat/guest/", GuestChatView.as_view()),
     path('auth/',include('accounts.urls')),
     path('baseball/', include('baseball.urls')),
+    path('tving/', include('tving.urls')),
 ]

@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone as datetime_timezone
@@ -18,7 +19,7 @@ from .prediction_source import PredictionSourceError, fetch_prediction_snapshot,
 class SourceResponse:
     status = 200
 
-    def __init__(self, payload, *, url="http://frontend:3000/kbo-api", content_length=None):
+    def __init__(self, payload, *, url="http://127.0.0.1:8000/tving/daily/", content_length=None):
         self.body = BytesIO(json.dumps(payload).encode())
         self.headers = {"Content-Type": "application/json"}
         if content_length is not None:
@@ -43,7 +44,7 @@ def source_payload(now, **game_changes):
     game = {
         "id": "20260915-LG-OB-1",
         "date": today,
-        "startsAt": (now + timedelta(hours=2)).isoformat(),
+        "startsAt": now.astimezone(datetime_timezone(timedelta(hours=9))).replace(hour=18, minute=30, second=0, microsecond=0).isoformat(),
         "stadium": "잠실",
         "away": {"code": "LG", "name": "LG", "score": None},
         "home": {"code": "OB", "name": "두산", "score": None},
@@ -54,6 +55,13 @@ def source_payload(now, **game_changes):
 
 
 class PredictionSourceTests(TestCase):
+    def test_default_source_calls_tving_service_without_http_loop(self):
+        now = datetime(2026, 9, 15, 1, tzinfo=datetime_timezone.utc)
+        with patch.dict(os.environ, {"PREDICTION_SOURCE_URL": ""}), patch("tving.service.refresh_daily", return_value=source_payload(now)["data"]) as refresh:
+            games = fetch_prediction_snapshot(now)
+        refresh.assert_called_once_with("2026-09-15")
+        self.assertEqual(games[0]["source_id"], "20260915-LG-OB-1")
+
     def test_source_rejects_stale_and_keeps_stable_game_id(self):
         now = datetime(2026, 9, 15, 1, tzinfo=datetime_timezone.utc)
         games = fetch_prediction_snapshot(now, lambda *_args, **_kwargs: SourceResponse(source_payload(now)))

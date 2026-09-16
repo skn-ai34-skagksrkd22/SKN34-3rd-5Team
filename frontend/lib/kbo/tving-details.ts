@@ -7,8 +7,6 @@ import {
   type KboTeamRankingGroup, type KboTeamShortcut,
 } from "./details-types";
 
-const BASE_URL = "https://gw.tving.com/bff/sports/v2";
-const MAX_RESPONSE_BYTES = 4_000_000;
 const TEAM_CODES = new Set<string>(KBO_TEAM_CODES);
 const POSITIONS: KboRosterPosition[] = ["pitcher", "infielder", "outfielder", "catcher"];
 const ATHLETE_TYPES: KboTeamAthleteType[] = ["pitcher", "hitter"];
@@ -237,39 +235,5 @@ export function parseTvingAthleteDetail(code: string, payload: unknown): KboAthl
   };
 }
 
-async function fetchPublicJson(url: string): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
-  try {
-    const response = await fetch(url, {
-      cache: "no-store", signal: controller.signal,
-      headers: { Accept: "application/json", Origin: "https://www.tving.com", Referer: "https://www.tving.com/" },
-    });
-    if (!response.ok) throw new Error(`TVING 상세 HTTP ${response.status}`);
-    const length = Number(response.headers.get("content-length"));
-    if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) throw new Error("TVING 상세 응답이 너무 큽니다");
-    const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error("TVING 상세 응답이 너무 큽니다");
-    if (!response.headers.get("content-type")?.toLowerCase().includes("json")) throw new Error("TVING 상세가 JSON이 아닌 응답을 반환했습니다");
-    return JSON.parse(text) as unknown;
-  } finally { clearTimeout(timeout); }
-}
-
 export function isKboTeamCode(value: string): value is KboTeamCode { return TEAM_CODES.has(value.toUpperCase()); }
 export function isKboAthleteCode(value: string): boolean { return /^\d{4,12}$/.test(value); }
-
-export async function fetchTvingTeamDetail(code: KboTeamCode): Promise<KboTeamDetail> {
-  const encoded = encodeURIComponent(code);
-  const [payload, pitcherRanking, hitterRanking, pitcher, infielder, outfielder, catcher] = await Promise.all([
-    fetchPublicJson(`${BASE_URL}/team?code=${encoded}&sportsType=kbo`),
-    fetchPublicJson(`${BASE_URL}/kbo/history/athlete/top5?teamCode=${encoded}&athleteType=pitcher`),
-    fetchPublicJson(`${BASE_URL}/kbo/history/athlete/top5?teamCode=${encoded}&athleteType=hitter`),
-    ...POSITIONS.map((position) => fetchPublicJson(`${BASE_URL}/roaster/item?sportsType=kbo&code=${encoded}&position=${position}`)),
-  ]);
-  return parseTvingTeamDetail(code, payload, { pitcher: pitcherRanking, hitter: hitterRanking }, { pitcher, infielder, outfielder, catcher });
-}
-
-export async function fetchTvingAthleteDetail(code: string): Promise<KboAthleteDetail> {
-  if (!isKboAthleteCode(code)) fail("선수 코드");
-  return parseTvingAthleteDetail(code, await fetchPublicJson(`${BASE_URL}/athlete?code=${encodeURIComponent(code)}&sportsType=kbo`));
-}

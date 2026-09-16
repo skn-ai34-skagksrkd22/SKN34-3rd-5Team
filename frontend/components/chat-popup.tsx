@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useRef } from "react";
 import { MAX_MESSAGE_LENGTH } from "@/lib/chat/types";
 import { ChatAnswer } from "./chat-answer";
+import { ChatCourseCard } from "./chat-course-card";
 import { useChat } from "./chat-provider";
 import { Icon } from "./icons";
 import "@/styles/chat-popup.css";
@@ -107,7 +108,7 @@ export function ChatPopup({
         {chat.context?.stadium && <p className="chat-popup-context"><Icon name="pin" size={13} />{chat.context.stadium}에서의 하루</p>}
         <div className="chat-popup-messages" role="log" aria-label="직관 도우미 대화 내용" aria-live="polite" aria-relevant="additions">
           {chat.messages.map((message, index) => <article key={`${chat.activeConversationId}-${index}`} className={`chat-popup-message chat-popup-message-${message.role}`}>
-            {message.role === "assistant" ? <><div className="chat-popup-assistant-label"><Icon name="sparkles" size={14} />직관 도우미</div><ChatAnswer text={message.content} /></> : <><span className="sr-only">나</span><div className="chat-popup-user-bubble">{message.content}</div></>}
+            {message.role === "assistant" ? <><div className="chat-popup-assistant-label"><Icon name="sparkles" size={14} />직관 도우미</div><ChatAnswer text={message.content} />{message.course && <ChatCourseCard course={message.course} />}</> : <><span className="sr-only">나</span><div className="chat-popup-user-bubble">{message.content}</div></>}
           </article>)}
           {(chat.pending || chat.failed) && <article className="chat-popup-message chat-popup-message-user"><span className="sr-only">나</span><div className="chat-popup-user-bubble">{chat.pending || chat.failed}</div></article>}
           {busy && <article className="chat-popup-message chat-popup-message-assistant"><div className="chat-popup-assistant-label"><Icon name="sparkles" size={14} />직관 도우미</div>{chat.streaming ? <ChatAnswer text={chat.streaming} /> : <div className="chat-popup-thinking" role="status"><span className="sr-only">답변을 준비하고 있어요</span><i /><i /><i /></div>}</article>}

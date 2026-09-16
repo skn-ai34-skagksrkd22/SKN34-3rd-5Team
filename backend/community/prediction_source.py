@@ -70,37 +70,22 @@ def _team(value, field, score_required):
 
 
 def _source_url():
-    value = os.getenv("PREDICTION_SOURCE_URL", "http://frontend:3000/kbo-api").strip()
+    value = os.getenv("PREDICTION_SOURCE_URL", "http://127.0.0.1:8000/tving/daily/").strip()
     parsed = urlsplit(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
         _fail("경기 원천 URL 설정이 올바르지 않습니다.")
     return value
 
 
-def fetch_prediction_snapshot(now=None, opener=urlopen):
+def fetch_prediction_snapshot(now=None, opener=None):
     now = now or timezone.now()
-    source_url = _source_url()
-    request = Request(source_url, headers={"Accept": "application/json"})
-    try:
-        with opener(request, timeout=15) as response:
-            if response.status != 200:
-                _fail(f"경기 원천 요청이 실패했습니다. (HTTP {response.status})")
-            if response.geturl() != source_url:
-                _fail("경기 원천이 다른 주소로 이동했습니다.")
-            if "application/json" not in response.headers.get("Content-Type", ""):
-                _fail("경기 원천이 JSON을 반환하지 않았습니다.")
-            size = response.headers.get("Content-Length")
-            if size and (not size.isdigit() or int(size) > MAX_RESPONSE_BYTES):
-                _fail("경기 원천 응답이 너무 큽니다.")
-            body = response.read(MAX_RESPONSE_BYTES + 1)
-    except (HTTPError, URLError, TimeoutError, OSError) as error:
-        _fail(f"경기 원천에 연결하지 못했습니다: {type(error).__name__}")
-    if len(body) > MAX_RESPONSE_BYTES:
-        _fail("경기 원천 응답이 너무 큽니다.")
-    try:
-        payload = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        _fail("경기 원천 JSON을 읽지 못했습니다.")
+    if opener is None and not os.getenv("PREDICTION_SOURCE_URL", "").strip():
+        from tving.service import refresh_daily
+        today = now.astimezone(ZoneInfo("Asia/Seoul")).date().isoformat()
+        payload = {"data": refresh_daily(today), "error": None}
+    else:
+        opener = opener or urlopen
+        payload = _fetch_prediction_payload(opener)
 
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict) or payload.get("error") is not None:
@@ -154,7 +139,34 @@ def fetch_prediction_snapshot(now=None, opener=urlopen):
     return games
 
 
-def sync_prediction_games(now=None, opener=urlopen):
+def _fetch_prediction_payload(opener):
+    source_url = _source_url()
+    request = Request(source_url, headers={"Accept": "application/json"})
+    try:
+        with opener(request, timeout=15) as response:
+            if response.status != 200:
+                _fail(f"경기 원천 요청이 실패했습니다. (HTTP {response.status})")
+            if response.geturl() != source_url:
+                _fail("경기 원천이 다른 주소로 이동했습니다.")
+            if "application/json" not in response.headers.get("Content-Type", ""):
+                _fail("경기 원천이 JSON을 반환하지 않았습니다.")
+            size = response.headers.get("Content-Length")
+            if size and (not size.isdigit() or int(size) > MAX_RESPONSE_BYTES):
+                _fail("경기 원천 응답이 너무 큽니다.")
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+    except (HTTPError, URLError, TimeoutError, OSError) as error:
+        _fail(f"경기 원천에 연결하지 못했습니다: {type(error).__name__}")
+    if len(body) > MAX_RESPONSE_BYTES:
+        _fail("경기 원천 응답이 너무 큽니다.")
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        _fail("경기 원천 JSON을 읽지 못했습니다.")
+
+    return payload
+
+
+def sync_prediction_games(now=None, opener=None):
     from .models import PredictionGame
 
     now = now or timezone.now()

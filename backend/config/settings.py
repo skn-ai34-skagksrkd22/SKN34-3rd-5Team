@@ -37,6 +37,8 @@ CHAT_CHECKPOINT_SIGNING_KEY = os.getenv("CHAT_CHECKPOINT_SIGNING_KEY", "")
 CHAT_TRUST_PROXY_HEADERS = os.getenv("CHAT_TRUST_PROXY_HEADERS", "false").strip().lower() == "true"
 CHAT_GUEST_RATE_LIMIT = int(os.getenv("CHAT_GUEST_RATE_LIMIT", "10"))
 CHAT_GUEST_RATE_WINDOW = int(os.getenv("CHAT_GUEST_RATE_WINDOW", "60"))
+KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
+EXTERNAL_DATA_SYNC_INTERVAL_SECONDS = positive_int_env("EXTERNAL_DATA_SYNC_INTERVAL_SECONDS", 600)
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -67,6 +69,7 @@ INSTALLED_APPS = [
     'accounts',
     'travel',
     'community',
+    'tving.apps.TvingConfig',
 ]
 
 MIDDLEWARE = [
@@ -130,6 +133,11 @@ BASEBALL_QUERY_MAX_SQL_BYTES = positive_int_env("BASEBALL_QUERY_MAX_SQL_BYTES", 
 BASEBALL_QUERY_MAX_RESPONSE_BYTES = positive_int_env(
     "BASEBALL_QUERY_MAX_RESPONSE_BYTES", 1024 * 1024
 )
+EXTERNAL_DATA_SYNC_INTERVAL_SECONDS = positive_int_env("EXTERNAL_DATA_SYNC_INTERVAL_SECONDS", 600)
+KMA_SERVICE_KEY = os.getenv("KMA_SERVICE_KEY", "")
+KMA_API_KEY = os.getenv("KMA_API_KEY", "")
+KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
+TOUR_API_KEY = os.getenv("TOUR_API_KEY", "")
 
 
 # Password validation
@@ -216,6 +224,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'course_write': '30/hour',
+        'place_search': '240/minute',
+        'tourism': '20/minute',
     },
 }
 
@@ -227,6 +237,10 @@ SPECTACULAR_SETTINGS = {
     'ENUM_NAME_OVERRIDES': {
         'ChatFinalizeStatusEnum': [('completed', 'completed'), ('stopped', 'stopped')],
         'CompletedStatusEnum': [('completed', 'completed')],
+        'CommunityCategoryEnum': [(value, value) for value in ('질문', '잡담', '응원', '경기토론', '전력토론', '소식·정보', '이적·신인', '직관후기', '좌석·예매', '직관준비', '굿즈', '사진·영상')],
+        'TourismCategoryEnum': [(value, value) for value in ('walk', 'sight', 'indoor')],
+        'DirectionsModeEnum': [(value, value) for value in ('walk', 'car', 'transit')],
+        'KboTeamCodeEnum': [(value, value) for value in ('LG', 'HH', 'SK', 'SS', 'NC', 'KT', 'LT', 'HT', 'OB', 'WO')],
     },
 }
 

@@ -10,6 +10,7 @@ import { coursePointLabel, renumberMapPoints, undoDrawnPoint } from "@/lib/drawn
 import { CourseTravelPanel, useCourseDirections, useTravelOverlay } from "./course-travel";
 import { StadiumParkingMapDialog } from "./stadium-parking-map-dialog";
 import type { TourResult } from "@/lib/tour-places";
+import { fetchTourPlaces } from "@/lib/tour-api";
 import { createClientId } from "@/lib/client-id";
 import type { TravelMode } from "@/lib/course-directions";
 
@@ -18,6 +19,10 @@ type PlannerProps = {
   stadium: NearbyStadium; stops: RouteStop[]; onChange: (stops: RouteStop[]) => void;
   initialStart?: TripRoute["start"]; onStartChange: (start: TripRoute["start"]) => void;
   initialTravelMode?: TravelMode; onTravelModeChange?: (mode: TravelMode) => void;
+  /** 바깥(챗봇 코스 담기)에서 이동수단을 바꿀 때 */
+  travelMode?: TravelMode;
+  /** 챗봇 코스를 담을 때마다 version 이 오른다 → 내 코스 탭을 열고 코스 전체를 보여준다 */
+  courseApplied?: { version: number; stadiumCode: string } | null;
   courseName: string; onCourseNameChange: (name: string) => void;
   onSaveCourse: () => Promise<void>; saving: boolean; saveError: string;
   startWithAllPlaces?: boolean;
@@ -67,7 +72,7 @@ export function NearbyRoutePlanner(props: PlannerProps) {
   </div>;
 }
 
-function LoadedPlanner({ maps, plannerMode = "places", stadium, stops, onChange: onStopsChange, initialStart, onStartChange, initialTravelMode, onTravelModeChange, courseName, onCourseNameChange, onSaveCourse, saving, saveError, startWithAllPlaces = false, onCompletionChange }: PlannerProps & { maps: KakaoMaps }) {
+function LoadedPlanner({ maps, plannerMode = "places", stadium, stops, onChange: onStopsChange, initialStart, onStartChange, initialTravelMode, onTravelModeChange, travelMode, courseApplied, courseName, onCourseNameChange, onSaveCourse, saving, saveError, startWithAllPlaces = false, onCompletionChange }: PlannerProps & { maps: KakaoMaps }) {
   const drawOnly = plannerMode === "draw";
   const [courseCompleted, setCourseCompleted] = useState(false);
   const stopSnapshot = useRef(stops);
@@ -147,6 +152,36 @@ function LoadedPlanner({ maps, plannerMode = "places", stadium, stops, onChange:
   const [notice, setNotice] = useState("");
   const [tour, setTour] = useState<{ status: TourResult["status"] | "loading"; truncated: boolean }>({ status: "loading", truncated: false });
   const [tourAttempt, setTourAttempt] = useState(0);
+
+  // ── 챗봇 코스 담기 연동 ──
+  const travelRef = useRef(travel);
+  const fitRef = useRef(fitCourse);
+  useLayoutEffect(() => { travelRef.current = travel; fitRef.current = fitCourse; });
+  useEffect(() => {
+    const current = travelRef.current;
+    if (travelMode && travelMode !== current.mode) current.setMode(travelMode);
+  }, [travelMode]);
+  const appliedSeen = useRef(0);
+  useEffect(() => {
+    if (!map || !courseApplied || courseApplied.stadiumCode !== stadium.code || appliedSeen.current === courseApplied.version) return;
+    appliedSeen.current = courseApplied.version;
+    // 챗봇 데이터의 구장 좌표는 주소 지오코딩이라 종합운동장 한가운데로 찍히기도 한다 → 지도가 찾은 구장 위치로 맞춘다
+    const current = stopSnapshot.current;
+    const snapped = current.map((stop) => stop.placeId?.startsWith("chat:stadium:") && distanceMeters(stop, stadium) > 30
+      ? { ...stop, name: stadium.name, lat: stadium.lat, lng: stadium.lng, address: stadium.address || stop.address }
+      : stop);
+    if (snapped.some((stop, index) => stop !== current[index])) {
+      // 코스 완성으로 잠긴 상태여도 보정은 해야 하므로 잠금 검사가 있는 onChange 대신 원래 콜백을 쓴다
+      const numbered = renumberMapPoints(snapped);
+      stopSnapshot.current = numbered;
+      onStopsChange(numbered);
+    }
+    clearTimeout(hoverTimer.current);
+    setSelected(null); setHovered(null); setNearPoint(null);
+    setSideTab("route"); setCourseCompleted(true);
+    // 새 지점이 그려진 다음 프레임에 맞춘다 (한 번만 처리하므로 취소하지 않는다)
+    requestAnimationFrame(() => fitRef.current());
+  }, [map, courseApplied, stadium, onStopsChange]);
 
   const undoPoint = useCallback(() => {
     const result = undoDrawnPoint(stopSnapshot.current, drawHistory);
@@ -332,10 +367,7 @@ function LoadedPlanner({ maps, plannerMode = "places", stadium, stops, onChange:
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
     let active = true;
-    fetch("/directions-api", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "tourism", stadium: stadium.code, lat: stadium.lat, lng: stadium.lng }), signal: controller.signal }).then(async (response) => {
-      if (!response.ok) throw new Error("Tourism places unavailable");
-      const result: TourResult = await response.json();
-      if (!Array.isArray(result.places) || !["ok", "partial", "unconfigured", "error"].includes(result.status)) throw new Error("Invalid tourism response");
+    fetchTourPlaces(stadium, fetch, controller.signal).then((result: TourResult) => {
       if (!active || controller.signal.aborted) return;
       setPlaces((previous) => mergePlaces(previous, result.places));
       setTour({ status: result.status, truncated: result.truncated });

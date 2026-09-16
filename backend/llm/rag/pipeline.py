@@ -11,10 +11,11 @@ ChatService 는 `self.chain` 에 두 가지만 요구한다.
 ChatService 쪽 변경은 import 1줄 + chain 고르는 1줄이 전부다.
 
     from .rag.pipeline import chat_chain          # 추가
-    self.chain = chat_chain() or self.get_chain() # CHAT_USE_RAG=0 이면 기존 체인 그대로
+    if rag := chat_chain(): return rag.invoke(...) # 항상 RAG 파이프라인 (테스트 중에만 성호 체인)
 
-`chat_chain()` 은 CHAT_USE_RAG 가 꺼져 있으면 None 을 돌려주므로,
-환경변수만 0 으로 두면 성호가 만든 예전 동작이 100% 그대로다 (테스트도 안 건드린다).
+스위치(CHAT_USE_RAG)는 2026-09-15 에 없앴다. 챗봇은 항상 이 파이프라인으로 답하고,
+야구 DB 는 파이프라인 안의 에이전트가 읽기 전용 계정 도구로 조회한다.
+`chat_chain()` 은 테스트 러너 안에서만 None 을 돌려줘 성호 회귀 테스트는 그대로 돈다.
 
 ## 풍부한 결과가 필요할 때 (코스 추천 places 등)
 
@@ -37,12 +38,12 @@ ChatService 쪽 변경은 import 1줄 + chain 고르는 1줄이 전부다.
 
 ## 흐름
 
-    ① history 정리 · 구장 접두어 분리                          LLM 0회
-    ② dispatcher.route()   course / club / venue / both / scope  LLM 0회
-    ③ 도메인 answer()      course: 경기+장소 조회 → ChatOpenAI 1회
-                           club:   라우터 → 직접조회 or 검색 → ChatOpenAI 1회
-                           venue:  create_agent 도구 호출 (2~3회)
-    ④ persona.finalize()   말투 통일                            LLM 0회
+    ① history 정리 · 구장 접두어 분리                                   LLM 0회
+    ② dispatcher          야구와 무관한 질문만 바로 안내                  LLM 0회
+    ③ assistant 파이프라인  프롬프트 · RAG(문서 검색) · 에이전트 · 파서       LLM 1~5회
+                          에이전트 도구: 야구 DB 읽기 전용 조회, 주변 장소(카카오), 코스 짜기
+                          실패하면 예전 도메인(course/club/venue/nearby)으로 한 번 더
+    ④ persona.finalize()  말투 통일                                     LLM 0회
 
 LangSmith: backend/.env 에 LANGSMITH_TRACING=true · LANGSMITH_API_KEY · LANGSMITH_PROJECT 를 넣으면
            answer() 한 번이 트리 하나로 기록된다. env 가 없으면 오버헤드 0.
@@ -119,9 +120,11 @@ def _running_tests() -> bool:
 
 
 def use_rag() -> bool:
-    """CHAT_USE_RAG=1 일 때만 RAG 를 쓴다. 기본값 0 — 켜야만 동작이 바뀐다. 테스트 중엔 항상 끈다."""
-    on = os.getenv("CHAT_USE_RAG", "0").strip().lower() in ("1", "true", "yes", "on")
-    return on and not _running_tests()
+    """챗봇은 항상 RAG 파이프라인으로 답한다 (CHAT_USE_RAG 스위치 제거, 2026-09-15).
+
+    성호 회귀 테스트(도구 루프를 가짜 모델로 검사)가 깨지지 않도록 테스트 러너 안에서만 끈다.
+    """
+    return not _running_tests()
 
 
 def split_stadium_prefix(question: str) -> tuple[str, Optional[str]]:
@@ -229,7 +232,7 @@ rag_chain = RagChatChain()
 
 
 def chat_chain() -> Optional[RagChatChain]:
-    """CHAT_USE_RAG 가 켜져 있으면 RAG 체인을, 꺼져 있으면 None 을 돌려준다.
+    """RAG 체인을 돌려준다 (테스트 러너 안에서만 None → 성호 체인).
 
     ChatService 는 `self.chain = chat_chain() or self.get_chain()` 한 줄로 쓴다.
     """

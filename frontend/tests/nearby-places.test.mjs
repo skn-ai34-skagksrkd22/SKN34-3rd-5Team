@@ -117,7 +117,7 @@ function fakeMaps(handler) {
     } },
   };
 }
-test("place search uses the same-origin directions POST instead of the browser Places SDK", async () => {
+test("place search posts directly to the Django API without a browser or Next relay", async () => {
   const calls = [];
   const maps = fakeMaps(() => { throw new Error("browser Places SDK must not run"); });
   const result = await searchPage(maps, stadium, { kind: "food", method: "category", query: "FD6" }, 1, new AbortController().signal, async (url, options) => {
@@ -125,9 +125,18 @@ test("place search uses the same-origin directions POST instead of the browser P
     return Response.json({ places: [raw()], hasNextPage: false });
   });
   assert.equal(result.places.length, 1);
-  assert.deepEqual(calls.map(({ url, options, body }) => ({ url, httpMethod: options.method, action: body.action, searchMethod: body.method })), [
-    { url: "/directions-api", httpMethod: "POST", action: "places", searchMethod: "category" },
+  assert.deepEqual(calls.map(({ url, options, body }) => ({ url, httpMethod: options.method, body })), [
+    { url: "/api/places/search/", httpMethod: "POST", body: { method: "category", category: "FD6", lat: stadium.lat, lng: stadium.lng, radius: 2500, size: 15, page: 1, sort: "distance" } },
   ]);
+});
+test("place searches are not cached in the browser", async () => {
+  let calls = 0;
+  const fetcher = async () => { calls++; return Response.json({ places: [raw()], hasNextPage: false, syncedAt: "2026-09-15T00:00:00Z" }); };
+  const query = { kind: "food", method: "category", query: "FD6" };
+  await searchPage(fakeMaps(() => {}), stadium, query, 1, new AbortController().signal, fetcher);
+  const result = await searchPage(fakeMaps(() => {}), stadium, query, 1, new AbortController().signal, fetcher);
+  assert.equal(calls, 2);
+  assert.equal(result.syncedAt, "2026-09-15T00:00:00Z");
 });
 test("search options always use the stadium, radius, distance ordering and bounded pages", async () => {
   const calls = [];

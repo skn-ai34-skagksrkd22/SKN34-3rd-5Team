@@ -1,0 +1,64 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: tving_test
+      POSTGRES_USER: tving_test
+      POSTGRES_PASSWORD: tving_test_only
+    ports:
+      - "127.0.0.1:18074:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tving_test -d tving_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  backend:
+    image: skn34-3rd-5team-backend
+    working_dir: /app
+    volumes:
+      - ../backend:/app
+      - ../frontend:/frontend:ro
+      - ../data:/data:ro
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: tving_test
+      DB_USER: tving_test
+      DB_PASSWORD: tving_test_only
+      BASEBALL_DB_USER: tving_test
+      BASEBALL_DB_PASSWORD: tving_test_only
+      EXTERNAL_DATA_SYNC_INTERVAL_SECONDS: "600"
+      DJANGO_ALLOWED_HOSTS: 127.0.0.1,localhost
+    ports:
+      - "127.0.0.1:18874:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+
+  frontend:
+    image: skn34-3rd-5team-frontend
+    working_dir: /app
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NEXT_PUBLIC_API_URL: ""
+      NEXT_PUBLIC_KAKAO_MAP_KEY: ""
+    ports:
+      - "127.0.0.1:18078:3000"
+    depends_on:
+      - backend
+    command: npm run dev
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:18079:80"
+    depends_on:
+      - backend
+      - frontend

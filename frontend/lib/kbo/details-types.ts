@@ -117,9 +117,13 @@ export type KboDetailStore = {
 
 export type KboDetailSnapshot<T> = T & {
   fetchedAt: string;
+  providerFetchedAt: string;
+  lastSyncedAt: string | null;
   source: { name: "TVING"; url: string };
   collecting: boolean;
   progress: KboDetailProgress;
+  stale: boolean;
+  warning: string | null;
 };
 
 export type KboDetailApiResponse<T> = { data: KboDetailSnapshot<T> | null; error: string | null };

@@ -18,3 +18,7 @@ test("travel and community DTOs remain aliases of generated OpenAPI components",
     assert.doesNotMatch(source, /type (ApiCourse|CommunityComment|PredictionGame|TeamCommunityPost) = \{/);
   }
 });
+
+test("fictional community examples explicitly have no images", () => {
+  assert.match(readFileSync(new URL("lib/free-community-examples.ts", frontend), "utf8"), /isSample: true, images: \[\]/);
+});

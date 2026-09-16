@@ -50,7 +50,7 @@ function useKboSnapshot() {
       }, 65_000);
 
       try {
-        const response = await fetch("/kbo-api", { cache: "no-store", signal: controller.signal });
+        const response = await fetch("/api/tving/daily/", { cache: "no-store", signal: controller.signal });
         const result: KboApiResponse = await response.json();
         if (!response.ok || !result.data || !Array.isArray(result.data.games) || !Array.isArray(result.data.standings)) {
           throw new Error("일정과 순위를 불러오지 못했어요.");
@@ -301,7 +301,7 @@ export function GameSchedule({ beforeTeamBoards }: { beforeTeamBoards?: ReactNod
         ) : data.games.length ? <GameCarousel games={data.games} /> : (
           <div className="kbo-empty-state"><Icon name="stadium" size={32} /><strong>오늘은 예정된 경기가 없어요.</strong><p>다음 경기를 기다리며 직관 코스를 준비해 보세요.</p></div>
         )}
-        {data && <><SourceMeta data={data} /><p className="game-weather-source">날씨: <a href="https://www.data.go.kr/data/15084084/openapi.do" target="_blank" rel="noreferrer">기상청</a> · 경기 시작에 가까운 정시 예보 · 고척은 구장 외부 기준</p></>}
+        {data && <><SourceMeta data={data} /><p className="game-weather-source">날씨: <a href="https://www.data.go.kr/data/15084084/openapi.do" target="_blank" rel="noreferrer">기상청 단기예보</a> · 경기 시작에 가까운 정시 예보 · 고척은 구장 외부 기준</p></>}
       </section>
 
       <KboHighlightSection />

@@ -17,7 +17,7 @@ for (const name of ["details-types", "tving-details"]) {
   writeFileSync(join(scratch, `${name}.js`), outputText);
 }
 const requireTestModule = createRequire(join(scratch, "entry.cjs"));
-const { parseTvingTeamDetail, parseTvingAthleteDetail, fetchTvingTeamDetail } = requireTestModule("./tving-details.js");
+const { parseTvingTeamDetail, parseTvingAthleteDetail } = requireTestModule("./tving-details.js");
 
 const success = (data) => ({ code: "0000", message: "Success", data });
 const player = (code, name) => ({ code, name, imageUrl: `https://image.tving.com/ntgs/sports/kbo/player/${code}.png`, backNumber: "NO.1" });
@@ -75,21 +75,3 @@ test("a roster athlete with no appearance record is still collected as a valid p
   assert.deepEqual(parsed.careerColumns, []);
   assert.deepEqual(parsed.careerRows, []);
 });
-
-test("team fetch explicitly requests both ranking tabs and all four roster tabs", async (t) => {
-  const calls = [];
-  t.mock.method(globalThis, "fetch", async (url) => {
-    const value = String(url); calls.push(value);
-    const payload = value.includes("/team?") ? teamPayload()
-      : value.includes("top5") ? rankings(value.includes("athleteType=pitcher") ? "P" : "H")
-        : rosters[new URL(value).searchParams.get("position")];
-    return new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } });
-  });
-  const result = await fetchTvingTeamDetail("LG");
-  assert.equal(result.rosters.catcher[0].name, "포수");
-  assert.equal(calls.length, 7);
-  assert.ok(calls.some(url => url.includes("athleteType=pitcher")));
-  assert.ok(calls.some(url => url.includes("athleteType=hitter")));
-  for (const position of Object.keys(rosters)) assert.ok(calls.some(url => url.includes(`position=${position}`)));
-});
-

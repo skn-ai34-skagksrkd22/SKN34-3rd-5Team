@@ -1,0 +1,9 @@
+SECRET_KEY = "weather-test"
+DEBUG = False
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+USE_TZ = True
+ROOT_URLCONF = "travel.weather_test_urls"
+INSTALLED_APPS = ["django.contrib.auth", "django.contrib.contenttypes", "rest_framework", "drf_spectacular", "travel"]
+DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+REST_FRAMEWORK = {"UNAUTHENTICATED_USER": None, "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema"}
+KMA_SERVICE_KEY = ""

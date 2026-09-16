@@ -38,7 +38,7 @@ export function useCourseDirections(stops: RouteStop[], enabled = true, initialS
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch("/directions-api", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, signal: controller.signal });
+        const response = await fetch("/api/travel/directions/", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, signal: controller.signal });
         const body = await response.json();
         if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "경로를 조회하지 못했어요.");
         if (!Array.isArray(body.legs)) throw new Error("경로 응답을 확인하지 못했어요.");

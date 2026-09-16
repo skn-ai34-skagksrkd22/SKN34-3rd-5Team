@@ -1,13 +1,12 @@
 import type { KakaoMaps, KakaoPlace } from "./kakao-maps";
 import { NEARBY_RADIUS, NEARBY_SEARCHES, normalizePlace, type CategoryFilter, type NearbyPlace, type NearbyStadium, type SearchSpec } from "./nearby-places";
 
-type SearchPage = { places: KakaoPlace[]; hasNextPage: boolean };
-const cache = new Map<string, { expires: number; result: SearchPage }>();
+type SearchPage = { places: KakaoPlace[]; hasNextPage: boolean; syncedAt?: string };
 
 type PlaceRequest = { method: "keyword" | "category"; keyword?: string; category?: string; lat: number; lng: number; radius?: number; page: number; size: number; sort: "accuracy" | "distance" };
 export async function searchKakaoPlaces(query: PlaceRequest, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<SearchPage> {
   signal.throwIfAborted();
-  const response = await fetcher("/directions-api", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "places", ...query }), signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]) });
+  const response = await fetcher("/api/places/search/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(query), signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]) });
   let body: unknown;
   try { body = await response.json(); } catch { throw new Error("장소 검색 응답을 확인하지 못했어요."); }
   if (!response.ok) throw new Error(body && typeof body === "object" && typeof (body as { error?: unknown }).error === "string" ? (body as { error: string }).error : "일부 장소를 불러오지 못했어요.");
@@ -16,14 +15,7 @@ export async function searchKakaoPlaces(query: PlaceRequest, signal: AbortSignal
 }
 
 export async function searchPage(_maps: KakaoMaps, stadium: NearbyStadium, spec: SearchSpec, page: number, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<SearchPage> {
-  const key = `${stadium.code}:${stadium.lat}:${stadium.lng}:${spec.method}:${spec.query}:${spec.accuracy ?? false}:${page}`;
-  const saved = cache.get(key);
-  if (saved && saved.expires > Date.now()) return saved.result;
-  const result = await searchKakaoPlaces({ method: spec.method, ...(spec.method === "keyword" ? { keyword: spec.query, ...(spec.group ? { category: spec.group } : {}) } : { category: spec.query }), lat: stadium.lat, lng: stadium.lng, radius: NEARBY_RADIUS, size: 15, page, sort: spec.accuracy ? "accuracy" : "distance" }, signal, fetcher);
-  signal.throwIfAborted();
-  if (cache.size > 600) cache.clear();
-  cache.set(key, { expires: Date.now() + 5 * 60_000, result });
-  return result;
+  return searchKakaoPlaces({ method: spec.method, ...(spec.method === "keyword" ? { keyword: spec.query, ...(spec.group ? { category: spec.group } : {}) } : { category: spec.query }), lat: stadium.lat, lng: stadium.lng, radius: NEARBY_RADIUS, size: 15, page, sort: spec.accuracy ? "accuracy" : "distance" }, signal, fetcher);
 }
 
 // Address geocodes may point at the entire sports complex (not the ballpark).

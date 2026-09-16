@@ -1,0 +1,19 @@
+.chat-course-card { margin-top: 12px; padding: 12px 13px 13px; border: 1px solid #dce7f7; border-radius: 14px; background: #f7faff; color: #3d5170; }
+.chat-course-head { display: flex; align-items: center; gap: 7px; }
+.chat-course-head strong { font-size: 12px; font-weight: 700; color: #2e4665; }
+.chat-course-icon { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: #fff; color: #246bf3; border: 1px solid #dde9fb; }
+.chat-course-chip { margin-left: auto; padding: 2px 8px; border-radius: 999px; background: #e7f0ff; color: #2a62c9; font-size: 10px; font-weight: 600; }
+.chat-course-stops { display: grid; gap: 2px; margin: 10px 0 0; padding: 0; list-style: none; }
+.chat-course-stops li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 30px; padding: 4px 8px; border-radius: 9px; background: #fff; font-size: 12px; }
+.chat-course-stops li.is-game { background: #eef4ff; }
+.chat-course-time { color: #6d87ac; font-variant-numeric: tabular-nums; font-size: 11px; }
+.chat-course-name { min-width: 0; overflow: hidden; color: #2e4665; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.chat-course-phase { color: #93a3b9; font-size: 10px; }
+.chat-course-summary { margin: 8px 2px 0; color: #6d7f98; font-size: 11px; line-height: 1.6; }
+.chat-course-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chat-course-actions button { flex: 1 1 auto; min-height: 34px; padding: 6px 11px; border: 1px solid #cfdcf1; border-radius: 10px; background: #fff; color: #3f5d86; font-size: 11px; font-weight: 600; }
+.chat-course-actions button:hover { border-color: #9dbbeb; background: #f1f6ff; }
+.chat-course-actions button.is-primary { border-color: #246bf3; background: #246bf3; color: #fff; }
+.chat-course-actions button.is-primary:hover { background: #1c5bd6; }
+.chat-course-actions button:focus-visible { outline: 2px solid #246bf3; outline-offset: 2px; }
+.chat-course-message { margin: 8px 2px 0; color: #2a62c9; font-size: 11px; }

@@ -16,7 +16,7 @@ function gameStatus(status: string) {
 }
 
 export function KboTeamProfilePage({ code }: { code: KboTeamCode }) {
-  const url = `/kbo-api/details/teams/${code}`;
+  const url = `/api/tving/details/teams/${code}/`;
   const { data, loading, refreshing, refresh } = useKboResource<KboDetailSnapshot<KboTeamDetail>>(url, current => current?.collecting ? 15_000 : 0);
   const [athleteType, setAthleteType] = useState<KboTeamAthleteType>("pitcher");
   const [position, setPosition] = useState<KboRosterPosition>("pitcher");
@@ -69,4 +69,3 @@ export function KboTeamProfilePage({ code }: { code: KboTeamCode }) {
     <KboDetailSource source={data.source} fetchedAt={data.fetchedAt} />
   </main>;
 }
-

@@ -154,10 +154,13 @@ def started_at(g, today, now):
     return g["date"] < today or (g["date"] == today and g["time"] <= now)
 
 
-def answer(question, today=None, hint_team=None, hint_place=None, hint_date=None, now=None):
+def answer(question, today=None, hint_team=None, hint_place=None, hint_date=None, now=None,
+           game_rows=None, standing_rows=None):
     """순위·일정 질문이면 DB 값으로 만든 문장을, 아니면 None (→ RAG 로 넘어감). hint_*: 직전 대화에서 이어받은 팀·구장·날짜"""
     today = today or date.today().isoformat()
     now = now or datetime.now().strftime("%H:%M")      # 오늘 경기라도 시작 시각이 지났으면 지난 경기로 본다
+    current_games = lambda: games() if game_rows is None else game_rows
+    current_standings = lambda: standings() if standing_rows is None else standing_rows
     q_team, q_place, q_date = team_in(question), place_in(question), date_in(question, today)
     elliptical = not (q_team or q_place or q_date or RE_NTH.search(question) or LAST.search(question))
     # "다음 경기는?", "몇대몇이야?" 처럼 팀·구장·날짜·순위를 아무것도 안 적은 후속 질문일 때만 직전 대화를 이어받는다
@@ -169,7 +172,7 @@ def answer(question, today=None, hint_team=None, hint_place=None, hint_date=None
     q_ns = re.sub(r"\s+", "", question)               # "가을 야구", "갈 수 있을까" 처럼 띄어쓰기가 흔들려도 잡는다
 
     if PREDICT_GAME.search(q_ns):                     # 승부 예측: 대진은 알려주되 승패는 말하지 않는다
-        rows = games()
+        rows = current_games()
         when = q_date or hint_date
         team = q_team or hint_team
         hit = [g for g in rows if (not when or g["date"] == when)
@@ -180,7 +183,7 @@ def answer(question, today=None, hint_team=None, hint_place=None, hint_date=None
                 f"경기 전 분위기나 전적은 KBO 홈페이지나 중계 방송에서 확인해 보시는 게 좋아요!").strip()
 
     if PREDICT.search(q_ns) and not PREDICT_GAME.search(q_ns):
-        team, table = q_team or hint_team, standings()
+        team, table = q_team or hint_team, current_standings()
         row = next((t for t in table if t["team"] == team), None) if team else None
         if row:
             gap_to = lambda o: round(float(row["gb"]) - float(o["gb"]), 1)
@@ -204,7 +207,7 @@ def answer(question, today=None, hint_team=None, hint_place=None, hint_date=None
 
     # ── 순위 ──────────────────────────────────────────────────────────────
     if ASK_RANK.search(question) and not EXCLUDE_RANK.search(question):
-        table = standings()
+        table = current_standings()
         if not table:
             return None
         as_of, team = table[0]["as_of"], q_team or hint_team
@@ -259,7 +262,7 @@ def answer(question, today=None, hint_team=None, hint_place=None, hint_date=None
         when = hint_date or today
     if not when and not ASK_NEXT.search(question):
         return None                                    # "경기장 규칙" 같은 일반 질문은 RAG 로
-    rows = games()
+    rows = current_games()
     if not rows:
         return None
     as_of = max((g["as_of"] for g in rows if g["as_of"]), default="")   # 비어 있지 않은 최신 기준일

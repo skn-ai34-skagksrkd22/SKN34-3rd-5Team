@@ -6232,8 +6232,1107 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+  /api/places/:
+    get:
+      operationId: places_list
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+      - in: query
+        name: kakao_place_id
+        schema:
+          type: string
+      - in: query
+        name: name
+        schema:
+          type: string
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      tags:
+      - places
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceListResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+    post:
+      operationId: places_create
+      tags:
+      - places
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+  /api/places/{id}/:
+    get:
+      operationId: places_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - places
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+    patch:
+      operationId: places_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - places
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPlacePatch'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+    delete:
+      operationId: places_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - places
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: 본문 없음
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+  /api/places/search/:
+    post:
+      operationId: places_search
+      tags:
+      - places
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceSearch'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceSearchResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceError'
+          description: ''
+  /api/tourism/:
+    get:
+      operationId: tourism_retrieve
+      parameters:
+      - in: query
+        name: lat
+        schema:
+          type: number
+          format: double
+        required: true
+      - in: query
+        name: lng
+        schema:
+          type: number
+          format: double
+        required: true
+      - in: query
+        name: stadium
+        schema:
+          type: string
+        required: true
+      tags:
+      - tourism
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TourismResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TourismResponse'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TourismResponse'
+          description: ''
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TourismResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TourismResponse'
+          description: ''
+  /api/travel/directions/:
+    post:
+      operationId: travel_directions_create
+      tags:
+      - travel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirectionsRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsError'
+          description: ''
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsError'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsError'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsError'
+          description: ''
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsError'
+          description: ''
+  /api/tving/daily/:
+    get:
+      operationId: tving_daily_retrieve
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/details/athletes/{value}/:
+    get:
+      operationId: tving_details_athletes_retrieve
+      parameters:
+      - in: path
+        name: value
+        schema:
+          type: string
+        required: true
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthleteResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/details/status/:
+    get:
+      operationId: tving_details_status_retrieve
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/details/teams/{value}/:
+    get:
+      operationId: tving_details_teams_retrieve
+      parameters:
+      - in: path
+        name: value
+        schema:
+          type: string
+        required: true
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/entities/:
+    get:
+      operationId: tving_entities_retrieve
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: kind
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: month
+        schema:
+          type: string
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      - in: query
+        name: player
+        schema:
+          type: string
+      - in: query
+        name: team
+        schema:
+          type: string
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityPageResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/entities/players/:
+    post:
+      operationId: tving_entities_players_create
+      tags:
+      - tving
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayerMutation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlayerMutation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlayerMutation'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerEntityResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/entities/players/{code}/:
+    get:
+      operationId: tving_entities_players_retrieve
+      parameters:
+      - in: path
+        name: code
+        schema:
+          type: string
+        required: true
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerEntityResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+    patch:
+      operationId: tving_entities_players_partial_update
+      parameters:
+      - in: path
+        name: code
+        schema:
+          type: string
+        required: true
+      tags:
+      - tving
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPlayerMutation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPlayerMutation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPlayerMutation'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerEntityResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+    delete:
+      operationId: tving_entities_players_destroy
+      parameters:
+      - in: path
+        name: code
+        schema:
+          type: string
+        required: true
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/schedule/:
+    get:
+      operationId: tving_schedule_retrieve
+      parameters:
+      - in: query
+        name: month
+        schema:
+          type: string
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/snapshots/:
+    get:
+      operationId: tving_snapshots_list
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: key
+        schema:
+          type: string
+      - in: query
+        name: kind
+        schema:
+          type: string
+      - in: query
+        name: month
+        schema:
+          type: string
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      - in: query
+        name: player
+        schema:
+          type: string
+      - in: query
+        name: team
+        schema:
+          type: string
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotPageResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+    post:
+      operationId: tving_snapshots_create
+      tags:
+      - tving
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotMutation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SnapshotMutation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SnapshotMutation'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/tving/snapshots/{id}/:
+    get:
+      operationId: tving_snapshots_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+    patch:
+      operationId: tving_snapshots_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - tving
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSnapshotMutation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSnapshotMutation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSnapshotMutation'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+    delete:
+      operationId: tving_snapshots_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - tving
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+  /api/weather/:
+    get:
+      operationId: weather_retrieve
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+        description: KST date (YYYY-MM-DD)
+        required: true
+      - in: query
+        name: stadium
+        schema:
+          type: string
+        description: Canonical stadium code
+        required: true
+      - in: query
+        name: time
+        schema:
+          type: string
+        description: KST time (HH:MM)
+        required: true
+      tags:
+      - weather
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherErrorResponse'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherErrorResponse'
+          description: ''
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherErrorResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherErrorResponse'
+          description: ''
 components:
   schemas:
+    ActionEnum:
+      enum:
+      - directions
+      type: string
+      description: '* `directions` - directions'
     AdminMember:
       type: object
       properties:
@@ -6273,6 +7372,87 @@ components:
       - is_staff
       - is_superuser
       - username
+    AthleteData:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+          format: date-time
+        providerFetchedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          $ref: '#/components/schemas/Source'
+        stale:
+          type: boolean
+        warning:
+          type: string
+          nullable: true
+        profile:
+          type: object
+          additionalProperties: {}
+        seasonTitle:
+          type: string
+        seasonRecords:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        careerTitle:
+          type: string
+        careerColumns:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        careerRows:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        collecting:
+          type: boolean
+        progress:
+          $ref: '#/components/schemas/DetailProgress'
+      required:
+      - careerColumns
+      - careerRows
+      - careerTitle
+      - collecting
+      - fetchedAt
+      - lastSyncedAt
+      - profile
+      - progress
+      - providerFetchedAt
+      - seasonRecords
+      - seasonTitle
+      - source
+      - stale
+      - updatedAt
+      - warning
+    AthleteResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/AthleteData'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
     BaseballError:
       type: object
       properties:
@@ -6305,34 +7485,6 @@ components:
       description: |-
         * `free` - free
         * `teams` - teams
-    CategoryEnum:
-      enum:
-      - 질문
-      - 잡담
-      - 응원
-      - 경기토론
-      - 전력토론
-      - 소식·정보
-      - 이적·신인
-      - 직관후기
-      - 좌석·예매
-      - 직관준비
-      - 굿즈
-      - 사진·영상
-      type: string
-      description: |-
-        * `질문` - 질문
-        * `잡담` - 잡담
-        * `응원` - 응원
-        * `경기토론` - 경기토론
-        * `전력토론` - 전력토론
-        * `소식·정보` - 소식·정보
-        * `이적·신인` - 이적·신인
-        * `직관후기` - 직관후기
-        * `좌석·예매` - 좌석·예매
-        * `직관준비` - 직관준비
-        * `굿즈` - 굿즈
-        * `사진·영상` - 사진·영상
     ChatCheckpointEvent:
       type: object
       properties:
@@ -6663,30 +7815,34 @@ components:
       - created_at
       - id
       - updated_at
-    CodeEnum:
+    CommunityCategoryEnum:
       enum:
-      - LG
-      - HH
-      - SK
-      - SS
-      - NC
-      - KT
-      - LT
-      - HT
-      - OB
-      - WO
+      - 질문
+      - 잡담
+      - 응원
+      - 경기토론
+      - 전력토론
+      - 소식·정보
+      - 이적·신인
+      - 직관후기
+      - 좌석·예매
+      - 직관준비
+      - 굿즈
+      - 사진·영상
       type: string
       description: |-
-        * `LG` - LG
-        * `HH` - HH
-        * `SK` - SK
-        * `SS` - SS
-        * `NC` - NC
-        * `KT` - KT
-        * `LT` - LT
-        * `HT` - HT
-        * `OB` - OB
-        * `WO` - WO
+        * `질문` - 질문
+        * `잡담` - 잡담
+        * `응원` - 응원
+        * `경기토론` - 경기토론
+        * `전력토론` - 전력토론
+        * `소식·정보` - 소식·정보
+        * `이적·신인` - 이적·신인
+        * `직관후기` - 직관후기
+        * `좌석·예매` - 좌석·예매
+        * `직관준비` - 직관준비
+        * `굿즈` - 굿즈
+        * `사진·영상` - 사진·영상
     CommunityComment:
       type: object
       properties:
@@ -6784,7 +7940,7 @@ components:
           type: string
           maxLength: 20000
         category:
-          $ref: '#/components/schemas/CategoryEnum'
+          $ref: '#/components/schemas/CommunityCategoryEnum'
         createdAt:
           type: string
           format: date-time
@@ -6864,7 +8020,7 @@ components:
           type: string
           maxLength: 2
         category:
-          $ref: '#/components/schemas/CategoryEnum'
+          $ref: '#/components/schemas/CommunityCategoryEnum'
         title:
           type: string
           maxLength: 200
@@ -6947,6 +8103,16 @@ components:
         * `image/jpeg` - image/jpeg
         * `image/png` - image/png
         * `image/webp` - image/webp
+    ContentTypeIdEnum:
+      enum:
+      - '12'
+      - '14'
+      - '28'
+      type: string
+      description: |-
+        * `12` - 12
+        * `14` - 14
+        * `28` - 28
     Course:
       type: object
       properties:
@@ -7259,6 +8425,230 @@ components:
           minimum: 0
       required:
       - views
+    CuisineEnum:
+      enum:
+      - 기타
+      type: string
+      description: '* `기타` - 기타'
+    DailyData:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+          format: date-time
+        providerFetchedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          $ref: '#/components/schemas/Source'
+        stale:
+          type: boolean
+        warning:
+          type: string
+          nullable: true
+        date:
+          type: string
+          format: date
+        games:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        standings:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        individualRankings:
+          $ref: '#/components/schemas/IndividualRankings'
+        sourceUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextCheckAt:
+          type: string
+          format: date-time
+        mode:
+          $ref: '#/components/schemas/DailyDataModeEnum'
+      required:
+      - date
+      - fetchedAt
+      - games
+      - individualRankings
+      - lastSyncedAt
+      - mode
+      - nextCheckAt
+      - providerFetchedAt
+      - source
+      - sourceUpdatedAt
+      - stale
+      - standings
+      - updatedAt
+      - warning
+    DailyDataModeEnum:
+      enum:
+      - fixed-interval
+      type: string
+      description: '* `fixed-interval` - fixed-interval'
+    DailyResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/DailyData'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
+    DetailProgress:
+      type: object
+      properties:
+        state:
+          $ref: '#/components/schemas/StateEnum'
+        generation:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        teamTotal:
+          type: integer
+        teamDone:
+          type: integer
+        athleteTotal:
+          type: integer
+        athleteDone:
+          type: integer
+        failures:
+          type: array
+          items:
+            type: string
+        strategy:
+          $ref: '#/components/schemas/StrategyEnum'
+      required:
+      - athleteDone
+      - athleteTotal
+      - completedAt
+      - failures
+      - generation
+      - startedAt
+      - state
+      - strategy
+      - teamDone
+      - teamTotal
+    DirectionsError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    DirectionsLeg:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/DirectionsLegStatusEnum'
+        distance:
+          type: integer
+          nullable: true
+        seconds:
+          type: integer
+          nullable: true
+        paths:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/TravelPoint'
+        instructions:
+          type: array
+          items:
+            type: string
+        stale:
+          type: boolean
+        warning:
+          type: string
+          nullable: true
+        error:
+          type: string
+      required:
+      - distance
+      - instructions
+      - paths
+      - seconds
+      - status
+    DirectionsLegStatusEnum:
+      enum:
+      - ok
+      - error
+      type: string
+      description: |-
+        * `ok` - ok
+        * `error` - error
+    DirectionsModeEnum:
+      enum:
+      - walk
+      - car
+      - transit
+      type: string
+      description: |-
+        * `walk` - walk
+        * `car` - car
+        * `transit` - transit
+    DirectionsRequest:
+      type: object
+      properties:
+        action:
+          $ref: '#/components/schemas/ActionEnum'
+        mode:
+          $ref: '#/components/schemas/DirectionsModeEnum'
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TravelPoint'
+          maxItems: 13
+          minItems: 2
+      required:
+      - mode
+      - points
+    DirectionsResponse:
+      type: object
+      properties:
+        mode:
+          $ref: '#/components/schemas/DirectionsModeEnum'
+        legs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DirectionsLeg'
+        distance:
+          type: integer
+          nullable: true
+        seconds:
+          type: integer
+          nullable: true
+      required:
+      - distance
+      - legs
+      - mode
+      - seconds
     DraftInput:
       additionalProperties: false
       properties:
@@ -7396,6 +8786,53 @@ components:
       required:
       - email
       - verified
+    EntityPage:
+      type: object
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - count
+      - page
+      - pageSize
+      - results
+    EntityPageResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/EntityPage'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
+    ErrorResponse:
+      type: object
+      properties:
+        data:
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
     Facility:
       type: object
       properties:
@@ -7929,6 +9366,80 @@ components:
       - size
       - url
       - width
+    IndividualRankings:
+      type: object
+      properties:
+        pitchers:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        hitters:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - hitters
+      - pitchers
+    KakaoPlace:
+      type: object
+      properties:
+        id:
+          type: string
+        place_name:
+          type: string
+        road_address_name:
+          type: string
+        address_name:
+          type: string
+        category_group_name:
+          type: string
+        category_group_code:
+          type: string
+        category_name:
+          type: string
+        phone:
+          type: string
+        x:
+          type: string
+        y:
+          type: string
+      required:
+      - address_name
+      - category_group_code
+      - category_group_name
+      - category_name
+      - id
+      - phone
+      - place_name
+      - road_address_name
+      - x
+      - y
+    KboTeamCodeEnum:
+      enum:
+      - SS
+      - KT
+      - LG
+      - HT
+      - OB
+      - NC
+      - HH
+      - LT
+      - SK
+      - WO
+      type: string
+      description: |-
+        * `SS` - SS
+        * `KT` - KT
+        * `LG` - LG
+        * `HT` - HT
+        * `OB` - OB
+        * `NC` - NC
+        * `HH` - HH
+        * `LT` - LT
+        * `SK` - SK
+        * `WO` - WO
     LogoutRequest:
       type: object
       properties:
@@ -8028,6 +9539,79 @@ components:
       - team_code
       - username
       - visibility
+    MonthData:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+          format: date-time
+        providerFetchedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          $ref: '#/components/schemas/Source'
+        stale:
+          type: boolean
+        warning:
+          type: string
+          nullable: true
+        year:
+          type: integer
+        month:
+          type: string
+          pattern: ^\d{4}-\d{2}$
+        today:
+          type: string
+          format: date
+        games:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        days:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        loading:
+          type: boolean
+      required:
+      - days
+      - fetchedAt
+      - games
+      - lastSyncedAt
+      - loading
+      - month
+      - providerFetchedAt
+      - source
+      - stale
+      - today
+      - updatedAt
+      - warning
+      - year
+    MonthResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/MonthData'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
     NotificationSettings:
       type: object
       properties:
@@ -8684,7 +10268,7 @@ components:
           type: string
           maxLength: 2
         category:
-          $ref: '#/components/schemas/CategoryEnum'
+          $ref: '#/components/schemas/CommunityCategoryEnum'
         title:
           type: string
           maxLength: 200
@@ -8977,6 +10561,58 @@ components:
           $ref: '#/components/schemas/NotificationSettings'
         visibility:
           $ref: '#/components/schemas/VisibilitySettings'
+    PatchedPlacePatch:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        address:
+          type: string
+          maxLength: 500
+        road_address:
+          type: string
+          maxLength: 500
+        category_group_code:
+          type: string
+          maxLength: 20
+        category_group_name:
+          type: string
+          maxLength: 100
+        category_name:
+          type: string
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 50
+        lat:
+          type: number
+          format: double
+          maximum: 90
+          minimum: -90
+        lng:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+        url:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 500
+          - type: string
+            maxLength: 0
+    PatchedPlayerMutation:
+      type: object
+      properties:
+        externalCode:
+          type: string
+          pattern: ^\d{4,12}$
+        teamCode:
+          $ref: '#/components/schemas/KboTeamCodeEnum'
+        name:
+          type: string
+          maxLength: 80
     PatchedPostseasonStage:
       type: object
       properties:
@@ -9096,6 +10732,18 @@ components:
         accessible:
           type: boolean
           nullable: true
+    PatchedSnapshotMutation:
+      type: object
+      properties:
+        resourceKind:
+          $ref: '#/components/schemas/ResourceKindEnum'
+        resourceKey:
+          type: string
+          maxLength: 16
+        payload: {}
+        sourceFetchedAt:
+          type: string
+          format: date-time
     PatchedStadium:
       type: object
       properties:
@@ -9334,6 +10982,261 @@ components:
         * `BEFORE` - BEFORE
         * `GAME` - GAME
         * `AFTER` - AFTER
+    Place:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        kakao_place_id:
+          type: string
+          nullable: true
+          maxLength: 100
+        name:
+          type: string
+          maxLength: 255
+        address:
+          type: string
+          maxLength: 500
+        road_address:
+          type: string
+          maxLength: 500
+        category_group_code:
+          type: string
+          maxLength: 20
+        category_group_name:
+          type: string
+          maxLength: 100
+        category_name:
+          type: string
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 120
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        url:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 500
+          - type: string
+            maxLength: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - id
+      - lat
+      - lng
+      - name
+      - updated_at
+    PlaceError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    PlaceListResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Place'
+      required:
+      - count
+      - page
+      - page_size
+      - results
+    PlaceSearch:
+      type: object
+      properties:
+        method:
+          type: string
+        keyword:
+          type: string
+          maxLength: 100
+        category:
+          type: string
+        lat:
+          type: number
+          format: double
+          maximum: 90
+          minimum: -90
+        lng:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+        radius:
+          type: integer
+          maximum: 20000
+          minimum: 1
+        page:
+          type: integer
+          maximum: 3
+          minimum: 1
+        size:
+          type: integer
+          maximum: 15
+          minimum: 1
+        sort:
+          type: string
+      required:
+      - lat
+      - lng
+      - method
+      - page
+      - size
+      - sort
+    PlaceSearchResponse:
+      type: object
+      properties:
+        places:
+          type: array
+          items:
+            $ref: '#/components/schemas/KakaoPlace'
+        hasNextPage:
+          type: boolean
+        syncedAt:
+          type: string
+          format: date-time
+          description: 카카오 공급자 응답을 성공적으로 조회한 시각이며 모든 저장 행의 동기화 시각을 뜻하지 않습니다.
+      required:
+      - hasNextPage
+      - places
+      - syncedAt
+    PlaceWrite:
+      type: object
+      properties:
+        kakao_place_id:
+          type: string
+          nullable: true
+          maxLength: 100
+        name:
+          type: string
+          maxLength: 255
+        address:
+          type: string
+          maxLength: 500
+        road_address:
+          type: string
+          maxLength: 500
+        category_group_code:
+          type: string
+          maxLength: 20
+        category_group_name:
+          type: string
+          maxLength: 100
+        category_name:
+          type: string
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 50
+        lat:
+          type: number
+          format: double
+          maximum: 90
+          minimum: -90
+        lng:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+        url:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 500
+          - type: string
+            maxLength: 0
+      required:
+      - lat
+      - lng
+      - name
+    PlayerEntity:
+      type: object
+      properties:
+        externalCode:
+          type: string
+        teamCode:
+          type: string
+        name:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        positions:
+          type: array
+          items:
+            type: string
+        backNumber:
+          type: string
+        profileLastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - backNumber
+      - externalCode
+      - imageUrl
+      - name
+      - positions
+      - profileLastSyncedAt
+      - teamCode
+    PlayerEntityResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/PlayerEntity'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
+    PlayerMutation:
+      type: object
+      properties:
+        externalCode:
+          type: string
+          pattern: ^\d{4,12}$
+        teamCode:
+          $ref: '#/components/schemas/KboTeamCodeEnum'
+        name:
+          type: string
+          maxLength: 80
+      required:
+      - name
+      - teamCode
     PostseasonStage:
       type: object
       properties:
@@ -9491,7 +11394,7 @@ components:
       type: object
       properties:
         code:
-          $ref: '#/components/schemas/CodeEnum'
+          $ref: '#/components/schemas/KboTeamCodeEnum'
         name:
           type: string
         score:
@@ -9528,6 +11431,93 @@ components:
       - home
       - homePercent
       - total
+    ProviderPlace:
+      type: object
+      properties:
+        placeId:
+          type: string
+          maxLength: 260
+          pattern: ^tour:\d+$
+        tourContentId:
+          type: string
+          maxLength: 255
+          pattern: ^\d+$
+        contentTypeId:
+          $ref: '#/components/schemas/ContentTypeIdEnum'
+        name:
+          type: string
+          maxLength: 255
+        lat:
+          type: number
+          format: double
+          maximum: 90
+          minimum: -90
+        lng:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+        category:
+          $ref: '#/components/schemas/ProviderPlaceCategoryEnum'
+        kind:
+          $ref: '#/components/schemas/TourismCategoryEnum'
+        cuisine:
+          $ref: '#/components/schemas/CuisineEnum'
+        address:
+          type: string
+          maxLength: 500
+        phone:
+          type: string
+          maxLength: 120
+        detail:
+          type: string
+          maxLength: 500
+        distance:
+          type: number
+          format: double
+          maximum: 2500
+          minimum: 0
+        subcategory:
+          type: string
+          maxLength: 120
+        imageUrl:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 500
+          - type: string
+            maxLength: 0
+        sourceUrl:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 500
+          - type: string
+            maxLength: 0
+      required:
+      - address
+      - category
+      - contentTypeId
+      - cuisine
+      - detail
+      - distance
+      - kind
+      - lat
+      - lng
+      - name
+      - phone
+      - placeId
+      - tourContentId
+    ProviderPlaceCategoryEnum:
+      enum:
+      - 산책
+      - 관광 명소
+      - 실내 놀거리
+      type: string
+      description: |-
+        * `산책` - 산책
+        * `관광 명소` - 관광 명소
+        * `실내 놀거리` - 실내 놀거리
     PublicFoodStore:
       type: object
       properties:
@@ -9794,6 +11784,18 @@ components:
         * `inappropriate` - inappropriate
         * `privacy` - privacy
         * `other` - other
+    ResourceKindEnum:
+      enum:
+      - daily
+      - month
+      - team
+      - athlete
+      type: string
+      description: |-
+        * `daily` - Daily
+        * `month` - Month
+        * `team` - Team
+        * `athlete` - Athlete
     ResultEnum:
       enum:
       - home
@@ -10134,6 +12136,112 @@ components:
       - password
       - re_password
       - username
+    Snapshot:
+      type: object
+      properties:
+        id:
+          type: integer
+        resourceKind:
+          $ref: '#/components/schemas/ResourceKindEnum'
+        resourceKey:
+          type: string
+        payload: {}
+        sourceFetchedAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - createdAt
+      - id
+      - lastSyncedAt
+      - payload
+      - resourceKey
+      - resourceKind
+      - sourceFetchedAt
+      - updatedAt
+    SnapshotMutation:
+      type: object
+      properties:
+        resourceKind:
+          $ref: '#/components/schemas/ResourceKindEnum'
+        resourceKey:
+          type: string
+          maxLength: 16
+        payload: {}
+        sourceFetchedAt:
+          type: string
+          format: date-time
+      required:
+      - payload
+      - sourceFetchedAt
+    SnapshotPage:
+      type: object
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Snapshot'
+      required:
+      - count
+      - page
+      - pageSize
+      - results
+    SnapshotPageResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/SnapshotPage'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
+    SnapshotResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/Snapshot'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
+    Source:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+      required:
+      - name
+      - url
     Stadium:
       type: object
       properties:
@@ -10421,6 +12529,34 @@ components:
       - snapshot_date
       - team_id
       - wins
+    StateEnum:
+      enum:
+      - idle
+      - partial
+      type: string
+      description: |-
+        * `idle` - idle
+        * `partial` - partial
+    StatusResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/DetailProgress'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
+    StrategyEnum:
+      enum:
+      - on-demand
+      type: string
+      description: '* `on-demand` - on-demand'
     Team:
       type: object
       properties:
@@ -10436,6 +12572,98 @@ components:
       - id
       - team_code
       - team_name_ko
+    TeamData:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+          format: date-time
+        providerFetchedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          $ref: '#/components/schemas/Source'
+        stale:
+          type: boolean
+        warning:
+          type: string
+          nullable: true
+        code:
+          type: string
+        teamName:
+          type: string
+        shortName:
+          type: string
+        teamImageUrl:
+          type: string
+          format: uri
+          nullable: true
+        backgroundImage:
+          type: string
+          format: uri
+          nullable: true
+        seasonTitle:
+          type: string
+        mainRecords:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        boxRecords:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        schedule:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        rankings:
+          type: object
+          additionalProperties: {}
+        rosters:
+          type: object
+          additionalProperties: {}
+        shortcuts:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        collecting:
+          type: boolean
+        progress:
+          $ref: '#/components/schemas/DetailProgress'
+      required:
+      - backgroundImage
+      - boxRecords
+      - code
+      - collecting
+      - fetchedAt
+      - lastSyncedAt
+      - mainRecords
+      - progress
+      - providerFetchedAt
+      - rankings
+      - rosters
+      - schedule
+      - seasonTitle
+      - shortName
+      - shortcuts
+      - source
+      - stale
+      - teamImageUrl
+      - teamName
+      - updatedAt
+      - warning
     TeamDetail:
       type: object
       properties:
@@ -10456,6 +12684,21 @@ components:
       - id
       - team_code
       - team_name_ko
+    TeamResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/TeamData'
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+      required:
+      - data
+      - error
     TicketPolicy:
       type: object
       properties:
@@ -10694,6 +12937,53 @@ components:
           readOnly: true
       required:
       - access
+    TourismCategoryEnum:
+      enum:
+      - walk
+      - sight
+      - indoor
+      type: string
+      description: |-
+        * `walk` - walk
+        * `sight` - sight
+        * `indoor` - indoor
+    TourismResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/TourismResponseStatusEnum'
+        places:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderPlace'
+        truncated:
+          type: boolean
+        stale:
+          type: boolean
+        fetchedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - places
+      - status
+      - truncated
+    TourismResponseStatusEnum:
+      enum:
+      - ok
+      - partial
+      - unconfigured
+      - error
+      type: string
+      description: |-
+        * `ok` - ok
+        * `partial` - partial
+        * `unconfigured` - unconfigured
+        * `error` - error
     Transport:
       type: object
       properties:
@@ -10775,6 +13065,22 @@ components:
       - mode
       - stadium_id
       - title
+    TravelPoint:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: double
+          maximum: 90
+          minimum: -90
+        lng:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+      required:
+      - lat
+      - lng
     UsernameRequestResponse:
       type: object
       properties:
@@ -10804,6 +13110,60 @@ components:
       description: |-
         * `up` - up
         * `down` - down
+    Weather:
+      type: object
+      properties:
+        label:
+          type: string
+        temperature:
+          type: number
+          format: double
+        forecastAt:
+          type: string
+          format: date-time
+        issuedAt:
+          type: string
+          format: date-time
+        fetchedAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+      required:
+      - fetchedAt
+      - forecastAt
+      - issuedAt
+      - label
+      - source
+      - temperature
+    WeatherError:
+      type: object
+      properties:
+        code:
+          type: string
+      required:
+      - code
+    WeatherErrorResponse:
+      type: object
+      properties:
+        weather:
+          allOf:
+          - $ref: '#/components/schemas/Weather'
+          nullable: true
+        error:
+          $ref: '#/components/schemas/WeatherError'
+      required:
+      - error
+      - weather
+    WeatherResponse:
+      type: object
+      properties:
+        weather:
+          allOf:
+          - $ref: '#/components/schemas/Weather'
+          nullable: true
+      required:
+      - weather
   securitySchemes:
     jwtAuth:
       type: http

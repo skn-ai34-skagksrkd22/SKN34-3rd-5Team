@@ -19,7 +19,7 @@ ENTER_BEFORE_MIN = 45        # 경기 시작 몇 분 전에 구장 도착을 권
 WALK_M_PER_MIN = 80          # 도보 평속 (반경 정책과 동일)
 DEFAULT_LEG_MIN = 10         # 좌표가 없어 이동시간을 못 재는 구간의 기본값
 
-STAY_MIN = {"FOOD": 50, "CAFE": 40, "SPOT": 40, "BAR": 80, "STADIUM": None}
+STAY_MIN = {"FOOD": 50, "CAFE": 40, "SPOT": 40, "BAR": 80, "INDOOR": 60, "STAY": None, "STADIUM": None}
 BAR_WORDS = ("술집", "호프", "포장마차", "이자카야", "맥주", "바(BAR)", "요리주점", "실내포장마차")
 
 
@@ -46,17 +46,17 @@ def to_hhmm(minutes: int) -> str:
 def kind_of(place) -> str:
     """체류시간·표시용 종류. FOOD 중 술집 업종은 BAR 로 따로 본다 (경기 후 체류가 길다)."""
     cat = place.get("category") or ""
-    if cat == "STADIUM":
-        return "STADIUM"
+    if cat in ("STADIUM", "STAY", "INDOOR"):
+        return cat
     detail = place.get("detail") or place.get("category_detail") or ""
     if cat in ("FOOD", "FOOD_OUT") and any(w in detail for w in BAR_WORDS):
         return "BAR"
-    return {"FOOD_OUT": "FOOD", "FOOD": "FOOD", "CAFE": "CAFE", "SPOT": "SPOT"}.get(cat, "SPOT")
+    return {"FOOD_OUT": "FOOD", "FOOD": "FOOD", "CAFE": "CAFE", "SPOT": "SPOT", "WALK": "SPOT"}.get(cat, "SPOT")
 
 
 def stay_min(place, phase: str) -> int:
     k = kind_of(place)
-    if k == "STADIUM":
+    if k in ("STADIUM", "STAY"):             # 숙소는 코스의 끝 — 머무는 시간을 세지 않는다
         return 0
     base = STAY_MIN.get(k) or 40
     if phase == "BEFORE" and k == "BAR":     # 경기 전에는 오래 못 앉아 있는다
@@ -118,6 +118,8 @@ def text_lines(course, lookup, tl, label=None) -> list[str]:
         if c["phase"] == "GAME":
             out.append(f"{r['time']}  {p.get('name', '구장')} 입장 · {tl['gameStart']} 경기 시작 "
                        f"(종료 {tl['gameEnd']} 예상)")
+        elif kind_of(p) == "STAY":
+            out.append(f"{r['time']}  {p.get('name', '')} (숙소 도착) — {c.get('reason', '')}")
         else:
             out.append(f"{r['time']}  {p.get('name', '')} ({r['stayMin']}분) — {c.get('reason', '')}")
     return out

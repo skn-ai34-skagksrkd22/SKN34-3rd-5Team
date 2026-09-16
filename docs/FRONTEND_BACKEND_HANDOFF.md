@@ -1,5 +1,13 @@
 # 프론트엔드 → 백엔드 연동 인계서
 
+## 2026-09-15 장소 검색 백엔드 계약
+
+- 외부 경로는 `POST /api/places/search/`, Nginx가 `/api/`를 제거한 Django 경로는 `/places/search/`다.
+- 요청은 기존 장소 검색 필드 `method`, `keyword?`, `category?`, `lat`, `lng`, `radius?`, `page`, `size`, `sort`만 보내며 기존 Next `action: "places"`는 보내지 않는다.
+- 응답은 기존 `{ places, hasNextPage }`와 카카오 장소 ID 및 문자열 `x/y`를 유지하고 `syncedAt`을 추가한다. `syncedAt`은 공급자 조회 성공 시각이며 모든 DB 행의 저장 시각을 뜻하지 않는다. 오류는 `{ "error": "안전한 사용자 메시지" }`다.
+- 브라우저에서 카카오 REST 키를 보내거나 Next `/directions-api`를 장소 검색 릴레이로 사용하지 않는다. 지도 JavaScript SDK와 Django 길찾기·TourAPI 경로는 별도 계약으로 유지한다.
+- 공개 API는 장소 검색·목록·상세이고, POST/PATCH/DELETE CRUD는 기존 JWT의 활성 staff 관리자만 허용한다. 자세한 내부 함수 계약은 `docs/PLACE_TOOLS_HANDOFF.md`를 따른다.
+
 작성 기준: 2026-09-10, `feat/front` 브랜치
 
 이 문서는 현재 프론트엔드 프로토타입을 Django·PostgreSQL 백엔드와 연결할 때 필요한 계약과 작업 순서를 정리한다. 화면 디자인과 사용자 흐름은 구현되어 있지만 회원, 게시글, 좋아요, 조회 수, 커뮤니티는 아직 실제 서버에 저장되지 않는다.
@@ -13,8 +21,8 @@
 | 좋아요·조회 수 | 브라우저별 임시 집계 | 사용자 기준 좋아요와 서버 조회 수 필요 |
 | 팀별 자유게시판 | 샘플 글만 표시 | 팀 게시판 글·댓글 API 필요 |
 | 챗봇 | Next 서버에서 데모/OpenAI/팀 백엔드로 전환 가능 | `POST /api/chat/` 계약만 맞추면 즉시 연결 가능 |
-| 경기·팀 순위·개인 순위 | Next 서버가 TVING 데이터를 수집하고 로컬 JSON에 저장 | 운영 배포 전 단일 수집 워커와 공용 DB로 이전 권장 |
-| 구단·선수 상세 | 팀 10개·선수 556명 수집 완료, 로컬 JSON 사용 | DB 적재 및 조회 API 필요 |
+| 경기·팀 순위·개인 순위 | 브라우저가 `/api/tving/` Django API 조회 | TVING 검증과 조건부 PostgreSQL 저장 구현됨 |
+| 구단·선수 상세 | Django on-demand 조회와 관계형 PostgreSQL 엔티티 | 전체 선수 자동 backfill 없음 |
 | KBO 하이라이트 | Next 서버가 YouTube Data API로 조회 | 현재 유지 가능, 필요하면 백엔드 캐시로 이전 |
 | 카카오맵 | 브라우저 JavaScript SDK 사용 | 도메인 등록 필요, 백엔드 API는 필수 아님 |
 | CKEditor | 연결 어댑터만 준비, 일반 글쓰기 사용 | 도입 시 이미지 업로드 API 필요 |
@@ -22,14 +30,9 @@
 프론트의 임시 서버 API는 다음 경로다.
 
 - `/chat-api`
-- `/kbo-api`
-- `/kbo-api/schedule`
-- `/kbo-api/details/status`
-- `/kbo-api/details/teams/{code}`
-- `/kbo-api/details/athletes/{code}`
 - `/youtube-api`
 
-이 경로들은 Next.js가 처리한다. Django API는 `/api/...` 아래에 만들면 된다.
+남은 위 경로들은 Next.js가 처리합니다. KBO와 날씨는 Nginx `/api/`가 Django로 직접 전달합니다.
 
 백엔드 연결과 관계가 큰 화면 주소는 다음과 같다.
 
@@ -352,49 +355,9 @@ RAG 답변에 출처를 표시하려면 추후 응답을 아래처럼 확장하�
 
 ## 8. KBO 일정·순위·구단·선수 데이터
 
-현재 프론트의 Next 서버가 TVING 웹 화면용 공개 응답을 수집한다. 메인과 상세 페이지가 같은 캐시를 읽으므로 페이지별로 다시 크롤링하지 않는다.
+TVING 네트워크·검증·저장은 Django `tving` 앱이 소유합니다. 브라우저는 `/api/tving/daily/`, `/api/tving/schedule/`, `/api/tving/details/teams/{code}/`, `/api/tving/details/athletes/{code}/`를 호출합니다. Next의 `/kbo-api` route, 프로세스 timer와 `.cache/kbo` 파일 저장은 제거됐습니다.
 
-로컬 저장 파일:
-
-```text
-frontend/.cache/kbo/collection.json
-frontend/.cache/kbo/archive/2026.json
-frontend/.cache/kbo/details.json
-```
-
-`.cache`는 Git에서 제외된다. 따라서 GitHub clone만으로 지금 컴퓨터의 수집 결과가 전달되지 않으며 새 환경에서 재수집하거나 DB 덤프를 별도로 준비해야 한다. 2026-09-10 확인 기준 상세 캐시는 구단 10개, 선수 556명, 수집 실패 0건이다.
-
-현재 수집 주기:
-
-| 상태 | 다음 수집 |
-| --- | --- |
-| 서버 시작·재시작 | 즉시 1회 수집 후 상태 판단 |
-| 무경기일·경기 전 | 1시간 뒤. 첫 경기 예정 시각이 더 빠르면 그 시각에 실행 |
-| 경기 시작·진행·지연·중단 | 5분 뒤 |
-| 당일 모든 경기 결과 저장 | 5분 뒤 순위를 한 번 더 확인 |
-| 최종 순위 확인 완료 | 1시간 뒤 |
-| 수집 실패 | 5·10·20·40·60분 제한 재시도 |
-
-종료와 확정 취소·연기는 완료로 인정하고 `SUSPENDED`는 계속 확인한다. 빈 응답이나 일부 경기 누락은 완료로 보지 않는다. 더블헤더는 경기 ID별로 저장한다. 과거 경기 일정은 2026년만 보관한다.
-
-운영 환경에서는 웹 서버 인스턴스마다 타이머를 실행하면 안 된다. 다음 구조를 권장한다.
-
-1. Celery Beat, 시스템 cron 또는 Django management command 중 하나로 수집 스케줄러를 한 개만 실행한다.
-2. 수집 결과를 PostgreSQL에 트랜잭션으로 upsert한다.
-3. 원본 경기 ID와 선수·구단 코드를 unique key로 사용한다.
-4. `source_updated_at`, `fetched_at`, `last_success_at`, `stale`, 수집 오류를 기록한다.
-5. Django 조회 API는 DB만 읽고 외부 TVING 호출을 직접 기다리지 않는다.
-
-권장 조회 API:
-
-| 메서드 | 경로 | 현재 대응 경로 |
-| --- | --- | --- |
-| `GET` | `/api/kbo/today/` | `/kbo-api` |
-| `GET` | `/api/kbo/schedule/?month=2026-09` | `/kbo-api/schedule?month=2026-09` |
-| `GET` | `/api/kbo/standings/` | `/kbo-api`의 `standings`, `individualRankings` |
-| `GET` | `/api/kbo/teams/{code}/` | `/kbo-api/details/teams/{code}` |
-| `GET` | `/api/kbo/athletes/{code}/` | `/kbo-api/details/athletes/{code}` |
-| `GET` | `/api/kbo/collection/status/` | `/kbo-api/details/status` |
+각 명시적 조회는 공급자를 새로 호출하며 `EXTERNAL_DATA_SYNC_INTERVAL_SECONDS`(기본 600초)는 entity별 DB 쓰기만 억제합니다. 기존 `Team`·`Game`·`StandingHistory`를 재사용하고 TVING과 CSV가 겹치면 TVING provenance 한 행만 유지합니다. 전체 계약과 callable CRUD/search 도구는 `frontend/docs/KBO_DATA.md`와 `docs/TVING_TOOLS_HANDOFF.md`를 기준으로 합니다.
 
 정확한 필드 타입은 다음 프론트 파일을 계약 기준으로 본다.
 
@@ -435,10 +398,12 @@ frontend/.cache/kbo/details.json
 | `OPENAI_MODEL` | Next 또는 챗봇 백엔드 | 비공개 설정 |
 | `OPENAI_API_KEY` | Next 또는 챗봇 백엔드 | 비밀 |
 | `YOUTUBE_API_KEY` | Next 또는 백엔드 | 비밀 |
-| `KBO_COLLECTOR_ENABLED` | Next 서버 | 비공개 설정 |
+| `EXTERNAL_DATA_SYNC_INTERVAL_SECONDS` | Django TVING·길찾기·장소·관광 entity | 비공개 설정, 기본 600초 |
+| `KMA_SERVICE_KEY` / `KMA_API_KEY` | Django 날씨 live 조회 | 비밀, 프론트 전달 금지 |
 | `NEXT_PUBLIC_KAKAO_MAP_KEY` | 브라우저 | 공개되는 키, 도메인 제한 필요 |
 | `NEXT_PUBLIC_CKEDITOR_LICENSE_KEY` | 브라우저 | 번들에 포함됨, 라이선스 정책 확인 |
-| `KAKAO_REST_API_KEY` | 백엔드 수집기 | 비밀 |
+| `KAKAO_REST_API_KEY` | Django 장소 검색·길찾기 | 비밀 |
+| `EXTERNAL_DATA_SYNC_INTERVAL_SECONDS` | Django 외부 데이터 DB 재기록 간격(기본 600초) | 비공개 설정 |
 | `DJANGO_SECRET_KEY` | Django | 비밀 |
 | `DATABASE_URL` 또는 `DB_*` | Django | 비밀 |
 | `ALLOWED_HOSTS` | Django | 환경별 설정 |

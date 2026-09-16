@@ -62,12 +62,14 @@ def sse(event, data):
 def course_meta():
     """이번 요청의 RAG 결과에서 지도·코스 저장에 쓸 것만 추린다 (코스 추천일 때만 값이 있다).
 
-    CHAT_USE_RAG=0 이거나 코스 질문이 아니면 None → meta 이벤트를 아예 안 보낸다.
+    코스를 짠 답이 아니면 None → done 에 아무것도 더 싣지 않는다.
     """
     d = last_detail()
     if not d or not (d.get("places") or d.get("coursePayload")):
         return None
-    return {"places": d.get("places") or [], "coursePayload": d.get("coursePayload"), "route": d.get("route", "")}
+    return {"places": d.get("places") or [], "coursePayload": d.get("coursePayload"), "route": d.get("route", ""),
+            # 프론트 "내 코스에 담기" 카드용 — 어느 구장 지도에, 어떤 이동수단으로 그릴지
+            "stadiumCode": d.get("stadiumCode"), "travel": d.get("travel")}
 
 
 def checkpoint_receipt(turn, prefix, complete=False):

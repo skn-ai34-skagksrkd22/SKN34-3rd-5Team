@@ -18,7 +18,6 @@ const requireTestModule = createRequire(join(scratch, "entry.cjs"));
 const {
   parseTvingCalendar, parseTvingSchedule, parseTvingStandings,
   parseTvingPitcherRankings, parseTvingHitterRankings,
-  fetchTvingCalendar, fetchTvingScheduleDay, fetchTvingKbo,
 } = requireTestModule("./tving.cjs");
 // Trimmed public statistics captured on 2026-09-09; no cookies or credentials.
 const fixture = (name) => JSON.parse(readFileSync(join(frontend, "tests/fixtures", name), "utf8"));
@@ -227,59 +226,6 @@ test("partial, duplicate, unknown-team and malformed individual ranking rows are
   assert.throws(() => parseTvingHitterRankings(hitterPayload));
 });
 
-test("fetch uses only public date/season URLs and confirms a redirected off-day with a calendar", async (t) => {
-  const calls = [];
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    calls.push(String(url));
-    assert.equal(init.cache, "no-store");
-    assert.equal(init.headers.Authorization, undefined);
-    const payload = String(url).includes("history/team") ? standings()
-      : String(url).includes("athleteType=pitcher") ? pitchers()
-        : String(url).includes("athleteType=hitter") ? hitters()
-          : String(url).includes("schedule/day") ? { code: "0000", data: { calendar: scheduleBand(ended()).calendar } }
-            : ended();
-    return new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } });
-  });
-  const result = await fetchTvingKbo("2026-09-07");
-  assert.equal(result.games.length, 0);
-  assert.equal(result.standings.length, 10);
-  assert.equal(result.individualRankings.pitchers.length, 2);
-  assert.equal(result.individualRankings.hitters.length, 2);
-  assert.equal(result.sourceUpdatedAt, null);
-  assert.equal(calls.length, 5);
-  assert.ok(calls.includes("https://gw.tving.com/bff/sports/v2/kbo/schedule?date=20260907"));
-  assert.ok(calls.includes("https://gw.tving.com/bff/sports/v2/kbo/history/team?yearSeason=2026&gameSeason=0"));
-  assert.ok(calls.includes("https://gw.tving.com/bff/sports/v2/kbo/history/athlete/ranking?yearSeason=2026&gameSeason=regular&athleteType=pitcher&pitcherRankOrder=earnedRunAverage&screenCode=CSSD0100&osCode=CSOD0900"));
-  assert.ok(calls.includes("https://gw.tving.com/bff/sports/v2/kbo/history/athlete/ranking?yearSeason=2026&gameSeason=regular&athleteType=hitter&hitterRankOrder=battingAverage&screenCode=CSSD0100&osCode=CSOD0900"));
-  assert.ok(calls.includes("https://gw.tving.com/bff/sports/v2/kbo/schedule/day?date=202609"));
-});
-
-test("fetch confirms an empty same-date response with a separate calendar when its calendar is missing", async (t) => {
-  const calls = [];
-  const payload = today();
-  scheduleBand(payload).items = [];
-  delete scheduleBand(payload).calendar;
-  t.mock.method(globalThis, "fetch", async (url) => {
-    calls.push(String(url));
-    const data = String(url).includes("history/team") ? standings()
-      : String(url).includes("athleteType=pitcher") ? pitchers()
-        : String(url).includes("athleteType=hitter") ? hitters()
-          : String(url).includes("schedule/day") ? { code: "0000", data: { calendar: [8, 10] } }
-            : payload;
-    return new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
-  });
-  assert.deepEqual((await fetchTvingKbo("2026-09-09")).games, []);
-  assert.equal(calls.length, 5);
-  assert.ok(calls.some(url => url.endsWith("schedule/day?date=202609")));
-});
-
-test("HTTP errors and non-JSON responses are rejected without including source bodies", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response("not public content", { status: 503 }));
-  await assert.rejects(fetchTvingKbo("2026-09-09"), /HTTP 503/);
-  globalThis.fetch.mock.mockImplementation(async () => new Response("not public content", { headers: { "content-type": "text/html" } }));
-  await assert.rejects(fetchTvingKbo("2026-09-09"), /JSON이 아닌/);
-});
-
 test("monthly calendar keeps all valid game days and rejects duplicates, impossible dates, and missing data", () => {
   const payload = { code: "0000", data: { calendar: [30, 1, 8, 9] } };
   assert.deepEqual(parseTvingCalendar(payload, "2026-09"), [1, 8, 9, 30]);
@@ -291,26 +237,4 @@ test("monthly calendar keeps all valid game days and rejects duplicates, impossi
     assert.throws(() => parseTvingCalendar(payload, month));
   }
   assert.throws(() => parseTvingCalendar({ code: "ERROR", data: { calendar: [] } }, "2026-09"));
-});
-
-test("calendar and historical-day fetches use only their respective public schedule endpoints", async (t) => {
-  const calls = [];
-  t.mock.method(globalThis, "fetch", async (url) => {
-    calls.push(String(url));
-    const payload = String(url).includes("schedule/day")
-      ? { code: "0000", data: { calendar: [1, 2, 8, 9, 30] } }
-      : ended();
-    return new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } });
-  });
-  assert.deepEqual(await fetchTvingCalendar("2026-09"), [1, 2, 8, 9, 30]);
-  const games = await fetchTvingScheduleDay("2026-09-08");
-  assert.equal(games.length, 5);
-  assert.ok(games.every((g) => g.status === "final"));
-  assert.deepEqual(calls, [
-    "https://gw.tving.com/bff/sports/v2/kbo/schedule/day?date=202609",
-    "https://gw.tving.com/bff/sports/v2/kbo/schedule?date=20260908",
-  ]);
-  await assert.rejects(fetchTvingCalendar("2026-13"));
-  await assert.rejects(fetchTvingScheduleDay("2026-02-30"));
-  assert.equal(calls.length, 2, "invalid dates must fail before making a network request");
 });

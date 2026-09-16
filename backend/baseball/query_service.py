@@ -16,6 +16,7 @@ class BaseballQueryService:
     SAFE_FUNCTIONS = {
         "ABS",
         "AVG",
+        "CASE",
         "CAST",
         "CEIL",
         "COALESCE",
@@ -122,6 +123,13 @@ class BaseballQueryService:
             raise BaseballQueryValidationError("야구 테이블을 조회하는 SELECT만 허용됩니다.")
 
         for function in statement.find_all(exp.Func):
+            # sqlglot 28 에서는 AND·OR·XOR(Connector)도 Func 하위 클래스라 함수로 잡힌다.
+            # 함수 호출이 아니라 조건 결합이므로 검사 대상에서 뺀다 (안 빼면 WHERE a AND b 가 전부 거부됨).
+            if isinstance(function, exp.Connector):
+                continue
+            # CASE WHEN … THEN … 의 WHEN 가지도 sqlglot 에서는 If 노드다 (CASE 안에 있을 때만 허용)
+            if isinstance(function, exp.If) and isinstance(function.parent, exp.Case):
+                continue
             if isinstance(function.parent, exp.Dot):
                 raise BaseballQueryValidationError("스키마 지정 함수는 허용되지 않습니다.")
             if isinstance(function, exp.Anonymous):

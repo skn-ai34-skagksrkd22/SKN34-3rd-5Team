@@ -76,41 +76,18 @@ test("parse singleton, empty and string-count pages; reject business errors even
   assert.throws(() => parseTourPage(page([], 2)));
   assert.throws(() => parseTourPage({ response: { header: { resultCode: "0000" }, body: {} } }));
 });
-test("server requests use fixed official URL, selected center, 2.5km radius and a once-encoded service key", async () => {
-  const seen = [];
-  const result = await fetchTourPlaces(stadium, "test%2Bkey%2F%3D", async (url, options) => {
-    const target = new URL(url); seen.push(target.searchParams.get("contentTypeId"));
-    assert.equal(target.origin + target.pathname, "https://apis.data.go.kr/B551011/KorService2/locationBasedList2");
-    for (const [key, value] of Object.entries({ radius: "2500", mapX: String(stadium.lng), mapY: String(stadium.lat), serviceKey: "test+key/=", numOfRows: "100", arrange: "E", _type: "json" })) assert.equal(target.searchParams.get(key), value);
-    assert.equal(options.cache, "no-store");
-    assert.ok(options.signal);
-    return Response.json(page([raw()]));
+test("tourism client calls Django only and validates its response", async () => {
+  const expected = JSON.parse(JSON.stringify({ status: "ok", places: [tourPlace], truncated: false }));
+  const result = await fetchTourPlaces(stadium, async (url, options) => {
+    const target = new URL(url, "http://example.test");
+    assert.equal(target.pathname, "/api/tourism/");
+    assert.equal(target.searchParams.get("stadium"), stadium.code);
+    assert.equal(target.searchParams.get("lat"), String(stadium.lat));
+    assert.equal(target.searchParams.get("lng"), String(stadium.lng));
+    assert.equal(options.redirect, "error");
+    return Response.json(expected);
   });
-  assert.deepEqual(seen.sort(), ["12", "14", "28"]);
-  assert.equal(result.status, "ok");
-  assert.equal(result.places.length, 1);
-});
-test("paging is bounded, deduplicated and marks omitted results", async () => {
-  const pages = [];
-  const result = await fetchTourPlaces(stadium, "test-key", async (url) => {
-    const params = new URL(url).searchParams; pages.push(Number(params.get("pageNo")));
-    return Response.json(page([raw()], 400));
-  });
-  assert.equal(pages.length, 9);
-  assert.equal(Math.max(...pages), 3);
-  assert.equal(result.truncated, true);
-  assert.equal(result.places.length, 1);
-});
-test("partial upstream failures retain successful pages; no credential or upstream message is returned", async () => {
-  const result = await fetchTourPlaces(stadium, "test-key", async (url) => {
-    const params = new URL(url).searchParams;
-    if (params.get("contentTypeId") === "14") return new Response("failure", { status: 503 });
-    if (params.get("pageNo") === "2") throw new Error("secret-bearing upstream error");
-    return Response.json(page([raw()], 101));
-  });
-  assert.equal(result.status, "partial");
-  assert.equal(result.places.length, 1);
-  assert.doesNotMatch(JSON.stringify(result), /test-key|secret-bearing/);
-  const failed = await fetchTourPlaces(stadium, "test-key", async () => Response.json({ response: { header: { resultCode: "30" } } }));
-  assert.deepEqual(failed, { status: "error", places: [], truncated: false });
+  assert.deepEqual(result, expected);
+  await assert.rejects(() => fetchTourPlaces(stadium, async () => Response.json({ status: "ok", places: "invalid", truncated: false })));
+  await assert.rejects(() => fetchTourPlaces(stadium, async () => new Response("secret upstream URL", { status: 502 })));
 });

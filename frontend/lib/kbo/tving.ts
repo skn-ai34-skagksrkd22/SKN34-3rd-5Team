@@ -1,12 +1,10 @@
 import type {
   KboAthleteRankingBase, KboGame, KboGameStatus, KboHitterRanking,
-  KboIndividualRankings, KboPitcherRanking, KboSourceData, KboStanding,
+  KboIndividualRankings, KboPitcherRanking, KboStanding,
 } from "./types";
 
 // These are the public statistics requests used by TVING's KBO schedule and
 // ranking pages. No member cookie, playback endpoint, or API credential is used.
-const BASE_URL = "https://gw.tving.com/bff/sports/v2/kbo";
-const MAX_RESPONSE_BYTES = 2_000_000;
 const TEAM_NAMES: Record<string, string> = {
   SS: "삼성", KT: "KT", LG: "LG", HT: "KIA", OB: "두산",
   NC: "NC", HH: "한화", LT: "롯데", SK: "SSG", WO: "키움",
@@ -285,63 +283,4 @@ export function parseTvingHitterRankings(payload: unknown): KboHitterRanking[] {
 
 export function parseTvingIndividualRankings(pitchers: unknown, hitters: unknown): KboIndividualRankings {
   return { pitchers: parseTvingPitcherRankings(pitchers), hitters: parseTvingHitterRankings(hitters) };
-}
-
-async function fetchJson(url: string): Promise<unknown> {
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) throw new Error(`티빙 KBO 통계 요청 실패 (HTTP ${response.status})`);
-  if (!response.headers.get("content-type")?.includes("application/json")) fail("JSON이 아닌 응답");
-  const contentLength = Number(response.headers.get("content-length"));
-  if (contentLength > MAX_RESPONSE_BYTES) fail("응답 크기 초과");
-  const text = await response.text();
-  if (text.length > MAX_RESPONSE_BYTES) fail("응답 크기 초과");
-  try { return JSON.parse(text); } catch { fail("JSON 파싱"); }
-}
-
-export async function fetchTvingCalendar(month: string): Promise<number[]> {
-  if (!/^\d{4}-\d{2}$/.test(month)) fail("요청 월");
-  const compact = compactDate(`${month}-01`).slice(0, 6);
-  return parseTvingCalendar(await fetchJson(`${BASE_URL}/schedule/day?date=${compact}`), month);
-}
-
-/** Fetch one day's full schedule without also requesting today's standings. */
-export async function fetchTvingScheduleDay(date: string): Promise<KboGame[]> {
-  const compact = compactDate(date);
-  const schedule = await fetchJson(`${BASE_URL}/schedule?date=${compact}`);
-  const scheduleData = band(schedule, "SPORTS_SCHEDULE");
-  const focused = String(scheduleData.focusDate);
-  const emptyWithoutCalendar = Array.isArray(scheduleData.items)
-    && scheduleData.items.length === 0 && scheduleData.calendar === undefined;
-  const monthCalendar = focused !== compact || emptyWithoutCalendar
-    ? await fetchJson(`${BASE_URL}/schedule/day?date=${compact.slice(0, 6)}`)
-    : undefined;
-  return parseTvingSchedule(schedule, date, monthCalendar);
-}
-
-export async function fetchTvingKbo(date: string): Promise<KboSourceData> {
-  const compact = compactDate(date);
-  const year = compact.slice(0, 4);
-  const athleteUrl = (type: "pitcher" | "hitter") => {
-    const order = type === "pitcher" ? "pitcherRankOrder=earnedRunAverage" : "hitterRankOrder=battingAverage";
-    return `${BASE_URL}/history/athlete/ranking?yearSeason=${year}&gameSeason=regular&athleteType=${type}&${order}&screenCode=CSSD0100&osCode=CSOD0900`;
-  };
-  const [games, standings, pitchers, hitters] = await Promise.all([
-    fetchTvingScheduleDay(date),
-    fetchJson(`${BASE_URL}/history/team?yearSeason=${year}&gameSeason=0`),
-    fetchJson(athleteUrl("pitcher")),
-    fetchJson(athleteUrl("hitter")),
-  ]);
-  return {
-    date,
-    games,
-    standings: parseTvingStandings(standings, date),
-    individualRankings: parseTvingIndividualRankings(pitchers, hitters),
-    // The public feed has no source publication timestamp. HTTP Date or RSC
-    // hydration times would only say when the response was served, not updated.
-    sourceUpdatedAt: null,
-  };
 }

@@ -26,6 +26,7 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
 from ..club.retrieval import embed                # 질문 임베딩만 재사용 (같은 임베딩 모델)
+from ..domain_tools import tools_for
 from ..persona import FIXED
 from .prompts import NO_DOCUMENTS_MESSAGE, QUERY_TRANSFORM, SYSTEM
 
@@ -47,7 +48,7 @@ VENUE_CATEGORIES = ["FOOD_IN", "FOOD_OUT", "CAFE", "SPOT", "FACILITY", "CONTENT"
 # ── 별칭 → (team_code, stadium_code)  (test.py TEAM_ALIASES 그대로) ──────────
 TEAM_ALIASES: dict[str, tuple[str, str]] = {
     "SSG랜더스": ("SSG", "MUNHAK"), "인천SSG랜더스필드": ("SSG", "MUNHAK"), "SSG랜더스필드": ("SSG", "MUNHAK"),
-    "랜더스필드": ("SSG", "MUNHAK"), "쓱랜더스": ("SSG", "MUNHAK"), "문학야구장": ("SSG", "MUNHAK"),
+    "랜더스필드": ("SSG", "MUNHAK"), "쓱랜더스": ("SSG", "MUNHAK"), "문학경기장": ("SSG", "MUNHAK"),
     "문학구장": ("SSG", "MUNHAK"), "인천야구장": ("SSG", "MUNHAK"), "인천구장": ("SSG", "MUNHAK"),
     "랜더스": ("SSG", "MUNHAK"), "SSG": ("SSG", "MUNHAK"), "문학": ("SSG", "MUNHAK"), "쓱": ("SSG", "MUNHAK"),
     "LG트윈스": ("LG", "JAMSIL"), "엘지트윈스": ("LG", "JAMSIL"), "트윈스": ("LG", "JAMSIL"),
@@ -102,7 +103,8 @@ def infer_slots(question: str) -> dict:
         if any(t in question for t in OUTSIDE_WORDS) and any(t in question for t in FOOD_WORDS):
             slots["categories"] = ["FOOD_OUT", "CAFE"]
         elif any(t in question for t in FOOD_WORDS):
-            slots["categories"] = ["FOOD_IN", "FOOD_OUT", "CAFE"]
+            # 내부 먹거리 질문에 외부 매장과 카페가 섞이지 않도록 원본 규칙을 유지한다.
+            slots["categories"] = ["FOOD_IN", "CONTENT", "FACILITY"]
     if any(t in question for t in OUTSIDE_WORDS):
         slots["in_stadium_flag"] = "N"
     elif any(t in question for t in INSIDE_WORDS):
@@ -124,14 +126,31 @@ def grade(meta: dict) -> str:
 
 
 # ── 검색 ────────────────────────────────────────────────────────────────────
-def vector_search(query: str, stadium: str | None, categories: list[str] | None) -> list[dict]:
-    """벡터 검색 → distance threshold → 문서 dict 목록 (content + metadata 전체)"""
+def _metadata_dict(metadata) -> dict:
+    """DB driver가 반환한 metadata를 항상 dict로 정규화한다."""
+    if isinstance(metadata, dict):
+        return metadata
+    if isinstance(metadata, str):
+        try:
+            value = json.loads(metadata)
+        except json.JSONDecodeError:
+            return {}
+        return value if isinstance(value, dict) else {}
+    return {}
+
+
+def vector_search(query: str, stadium: str | None, categories: list[str] | None,
+                  in_stadium_flag: str | None = None) -> list[dict]:
+    """구장·카테고리·안팎 조건을 적용한 벡터 검색."""
     qvec = embed(query)
     conds = ["metadata->>'category' = ANY(%(cats)s)"]
     params: dict = {"cats": categories or VENUE_CATEGORIES, "v": "[" + ",".join(map(str, qvec)) + "]", "k": TOP_K}
     if stadium:
         conds.append("(metadata->>'stadium_code' = %(st)s OR metadata->>'stadium_code' IS NULL)")
         params["st"] = stadium
+    if in_stadium_flag:
+        conds.append("metadata->>'in_stadium_flag' = %(flag)s")
+        params["flag"] = in_stadium_flag
     sql = f"""
         SELECT content, metadata, embedding <=> %(v)s::vector AS dist
         FROM llm_documentchunk WHERE {' AND '.join(conds)}
@@ -144,7 +163,7 @@ def vector_search(query: str, stadium: str | None, categories: list[str] | None)
     for content, meta, dist in rows:
         if float(dist) > MAX_DISTANCE:
             continue
-        meta = meta if isinstance(meta, dict) else json.loads(meta)
+        meta = _metadata_dict(meta)
         out.append({"content": content, "metadata": {**meta, "distance": float(dist), "match_type": "vector"}})
     return out
 
@@ -181,13 +200,8 @@ def keyword_fallback_search(query: str, stadium: str | None, categories: list[st
         return sum(p.strip("%").lower() in text for p in patterns)
 
     rows = sorted(rows, key=score, reverse=True)[:top_k]
-    return [{"content": c, "metadata": {**(m if isinstance(m, dict) else json.loads(m)), "distance": None, "match_type": "keyword_fallback"}}
+    return [{"content": c, "metadata": {**_metadata_dict(m), "distance": None, "match_type": "keyword_fallback"}}
             for c, m in rows]
-
-
-def _apply_soft_filter(docs, fn):
-    kept = [d for d in docs if fn(d)]
-    return kept if kept else docs
 
 
 def search_documents(query: str, slots: dict) -> dict:
@@ -196,15 +210,15 @@ def search_documents(query: str, slots: dict) -> dict:
     slots = {**infer_slots(f"{query} {transformed}"), **{k: v for k, v in slots.items() if v}}
     stadium, cats, flag = slots.get("stadium_code"), slots.get("categories"), slots.get("in_stadium_flag")
 
-    docs = vector_search(transformed, stadium, cats)
-    if flag:
-        docs = _apply_soft_filter(docs, lambda d: d["metadata"].get("in_stadium_flag") == flag)
+    docs = vector_search(transformed, stadium, cats, flag)
     method = "vector" if docs else "none"
 
     fetch_k = max(TOP_K * 2, 10)
     if not docs or len(docs) < 3:
-        fb = keyword_fallback_search(transformed, stadium, cats, flag, fetch_k) or \
-             keyword_fallback_search(query, stadium, cats, None, fetch_k)
+        # 내부/외부가 명시된 경우 fallback에서도 그 조건을 풀지 않는다.
+        fb = keyword_fallback_search(transformed, stadium, cats, flag, fetch_k)
+        if not fb and transformed != query:
+            fb = keyword_fallback_search(query, stadium, cats, flag, fetch_k)
         if fb:
             docs, method = fb, "keyword_fallback"
     docs = docs[:fetch_k]
@@ -254,7 +268,7 @@ def search_documents_tool(query: str) -> str:
 def agent():
     global _agent
     if _agent is None:
-        _agent = create_agent(model=llm(), tools=[search_documents_tool], system_prompt=SYSTEM)
+        _agent = create_agent(model=llm(), tools=[search_documents_tool, *tools_for("venue")], system_prompt=SYSTEM)
     return _agent
 
 
@@ -292,7 +306,7 @@ def answer(question, history=None, hint_stadium=None):
         messages = [*[{"role": m["role"], "content": m["content"]} for m in history[-6:]],
                     {"role": "user", "content": question}]
         t0 = time.perf_counter()
-        result = agent().invoke({"messages": messages})
+        result = agent().invoke({"messages": messages}, config={"recursion_limit": 6})
         timing["agent_ms"] = round((time.perf_counter() - t0) * 1000)
     finally:
         _ctx.reset(token)

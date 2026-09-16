@@ -415,3 +415,4 @@ class CourseSampleMigrationTests(TransactionTestCase):
         self.assertEqual(list(custom.stops.values_list("name", flat=True)), ["사용자 장소"])
         self.assertEqual(Course.objects.filter(is_sample=True).count(), 19)
         self.assertEqual(CourseStop.objects.filter(course__is_sample=True).count(), 58)
+        MigrationExecutor(connection).migrate([("travel", "0009_tourismplace_use_common_place")])

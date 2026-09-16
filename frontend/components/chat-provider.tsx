@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import type { ChatContext, ChatMessage, ChatStatus } from "@/lib/chat/types";
+import type { ChatContext, ChatCourse, ChatMessage, ChatStatus } from "@/lib/chat/types";
 import { MAX_HISTORY_MESSAGES, MAX_MESSAGE_LENGTH } from "@/lib/chat/types";
 import {
   ChatClientError,
@@ -26,6 +26,13 @@ type ConversationSnapshot = {
   notice: string;
   uncertain: boolean;
 };
+/** 챗봇 코스를 받아 줄 화면 (루트 작성). apply 는 되돌리기 함수를 돌려준다. */
+export type CourseTarget = {
+  stadiumCode: string;
+  stopCount: number;
+  apply: (course: ChatCourse, how: "replace" | "append") => (() => void) | null;
+};
+export type AppliedCourse = { undo: (() => void) | null; message: string };
 type ChatControls = ConversationSnapshot & {
   openChat: (initialMessage?: string, context?: ChatContext) => void;
   onExpand: () => void;
@@ -48,6 +55,13 @@ type ChatControls = ConversationSnapshot & {
   onSuggestion: (text: string, intent: ChatContext["intent"]) => void;
   onSelectConversation: (id: string) => void;
   onContextChange: (context?: ChatContext) => void;
+  courseTarget: CourseTarget | null;
+  registerCourseTarget: (target: CourseTarget | null) => void;
+  openCourseInWriter: (course: ChatCourse) => void;
+  takePendingCourse: () => ChatCourse | null;
+  appliedCourses: ReadonlyMap<ChatCourse, AppliedCourse>;
+  applyChatCourse: (course: ChatCourse, how: "replace" | "append") => void;
+  undoChatCourse: (course: ChatCourse) => void;
 };
 const ChatControlsContext = createContext<ChatControls | null>(null);
 
@@ -82,6 +96,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [uncertain, setUncertain] = useState(false);
   const [streaming, setStreaming] = useState("");
   const [chatIdentity, setChatIdentity] = useState(identity);
+  const [courseTarget, setCourseTarget] = useState<CourseTarget | null>(null);
+  const courseTargetRef = useRef<CourseTarget | null>(null);
+  const [appliedCourses, setAppliedCourses] = useState<ReadonlyMap<ChatCourse, AppliedCourse>>(() => new Map());
+  const appliedCoursesRef = useRef(appliedCourses);
+  useEffect(() => { appliedCoursesRef.current = appliedCourses; }, [appliedCourses]);
+  // 다른 화면(전체 채팅·팝업)에서 "루트 작성에서 열기"를 누르면 여기 두었다가 작성 화면이 가져간다.
+  const pendingCourseRef = useRef<ChatCourse | null>(null);
   const streamingRef = useRef("");
   const historyRef = useRef<ChatMessage[]>([]);
   const requestRef = useRef<{
@@ -267,6 +288,27 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     streamingRef.current = "";
   }, [identity, memberStatus]);
 
+  const registerCourseTarget = useCallback((target: CourseTarget | null) => {
+    courseTargetRef.current = target;
+    setCourseTarget(target);
+  }, []);
+  const applyChatCourse = useCallback((course: ChatCourse, how: "replace" | "append") => {
+    const target = courseTargetRef.current;
+    if (!target) return;
+    const had = target.stopCount, otherStadium = Boolean(course.stadiumCode && course.stadiumCode !== target.stadiumCode);
+    const undo = target.apply(course, how);
+    const message = !undo ? "이 코스를 지도에 담지 못했어요. 구장을 확인해 주세요."
+      : otherStadium ? "구장을 바꾸고 추천 코스를 옆 지도에 그렸어요."
+      : how === "append" ? "내 코스 뒤에 이어 담았어요."
+      : had ? `옆 지도에 추천 코스를 그렸어요. 원래 담아둔 ${had}곳은 되돌리기로 복구할 수 있어요.`
+      : "옆 지도에 추천 코스를 그렸어요. 순서는 내 코스에서 바꿀 수 있어요.";
+    setAppliedCourses(current => new Map(current).set(course, { undo, message }));
+  }, []);
+  const undoChatCourse = useCallback((course: ChatCourse) => {
+    appliedCoursesRef.current.get(course)?.undo?.();
+    setAppliedCourses(current => new Map(current).set(course, { undo: null, message: "담기 전 코스로 되돌렸어요." }));
+  }, []);
+
   const send = useCallback(async (text = draft, options?: { context?: ChatContext }) => {
     const selectedContext = options ? options.context : context;
     const content = text.trim();
@@ -323,7 +365,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       });
       if (version !== requestVersion.current) return;
       if (mode === "member" && reply.sessionId) backendSessions.current.set(activeConversationId, reply.sessionId);
-      const next: ChatMessage[] = [...previous, userMessage, ...(reply.reply ? [{ role: "assistant" as const, content: reply.reply }] : [])];
+      // 루트 작성 화면이면 챗봇이 짠 코스를 옆 지도에 바로 그린다 (카드에서 되돌리기 가능)
+      if (reply.course && reply.completionStatus !== "stopped" && courseTargetRef.current) applyChatCourse(reply.course, "replace");
+      const next: ChatMessage[] = [...previous, userMessage, ...(reply.reply ? [{ role: "assistant" as const, content: reply.reply, ...(reply.course ? { course: reply.course } : {}) }] : [])];
       historyRef.current = next;
       setMessages(next);
       setStatus({ provider: reply.provider, model: reply.model, ready: reply.ready });
@@ -353,7 +397,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         streamingRef.current = "";
       }
     }
-  }, [activeConversationId, context, draft, identity, memberStatus, uncertain]);
+  }, [activeConversationId, applyChatCourse, context, draft, identity, memberStatus, uncertain]);
+
+  const openCourseInWriter = useCallback((course: ChatCourse) => {
+    pendingCourseRef.current = course;
+    setPopupRequested(false);
+    router.push(`/routes/new${course.stadiumCode ? `?stadium=${encodeURIComponent(course.stadiumCode)}` : ""}`);
+  }, [router]);
+  const takePendingCourse = useCallback(() => {
+    const course = pendingCourseRef.current;
+    pendingCourseRef.current = null;
+    return course;
+  }, []);
 
   const openChat = useCallback((initialMessage?: string, nextContext?: ChatContext) => {
     expandChat();
@@ -419,6 +474,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       onSuggestion: (text, intent) => { setDraft(text); setContext(current => ({ ...current, intent })); },
       onSelectConversation: selectConversation,
       onContextChange: setContext,
+      courseTarget, registerCourseTarget, openCourseInWriter, takePendingCourse,
+      appliedCourses, applyChatCourse, undoChatCourse,
     }}>
       {children}
       {!popupOpen && <button ref={topButtonRef} type="button" className="scroll-to-top" aria-label="맨 위로 이동" title="맨 위로 이동" onClick={() => window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" })}>

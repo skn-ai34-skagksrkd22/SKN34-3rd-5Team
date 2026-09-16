@@ -10,7 +10,7 @@ import ts from "typescript";
 const frontend = dirname(dirname(fileURLToPath(import.meta.url)));
 const scratch = mkdtempSync(join(tmpdir(), "kbo-chat-direct-test-"));
 after(() => rmSync(scratch, { recursive: true, force: true }));
-for (const name of ["lib/member-auth-request", "lib/chat/types", "lib/chat/validation", "lib/chat/client"]) {
+for (const name of ["lib/member-auth-request", "lib/chat/types", "lib/chat/validation", "lib/chat/course", "lib/chat/client"]) {
   const source = readFileSync(join(frontend, `${name}.ts`), "utf8");
   const { outputText } = ts.transpileModule(source, {
     fileName: `${name}.ts`, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -29,6 +29,7 @@ global.sessionStorage = {
 const require = createRequire(join(scratch, "entry.cjs"));
 const { clearMemberTokens, saveMemberTokens } = require("./lib/member-auth-request.js");
 const { ChatClientError, deleteChatSession, fetchChatHistory, getChatStatus, renameChatSession, sendChatMessage, sendGuestChatMessage, sendNonStreamChatMessage } = require("./lib/chat/client.js");
+const { courseToStops, parseChatCourse } = require("./lib/chat/course.js");
 const json = (value, status = 200) => Response.json(value, { status });
 const sse = events => new Response(new ReadableStream({
   start(controller) {
@@ -197,6 +198,69 @@ test("guest uses bounded browser history, Stop before a token stays local, and n
   assert.equal(authorization, null);
   assert.equal(reply.completionStatus, "stopped");
   assert.equal(reply.reply, "");
+});
+
+const coursePlaces = [
+  { phase: "BEFORE", name: "상무초밥 잠실점", lat: 37.51, lng: 127.08, category: "FOOD", placeId: "123456", address: "서울 송파구", reason: "초밥", time: "16:06", stayMin: 50 },
+  { phase: "BEFORE", name: "좌표 없는 곳", lat: null, lng: 127.08, category: "CAFE" },
+  { phase: "GAME", name: "잠실야구장", lat: 37.512, lng: 127.072, category: "STADIUM", placeId: null, time: "17:45" },
+  { phase: "AFTER", name: "잠실 게스트하우스", lat: 37.51, lng: 127.08, category: "STAY", placeId: "555", time: "22:49" },
+];
+const courseDone = answer => ({
+  assistant_message: answer, places: coursePlaces, stadiumCode: "JAMSIL",
+  travel: { mode: "car", label: "자동차", summary: "한 번 주차하고 걸어 다니면 돼요", lines: ["주차: 종합운동장 주차 — 876면"] },
+  coursePayload: { title: "09-16 잠실야구장 직관 코스 (데이트)", content: "타임라인" },
+});
+
+test("guest course answer carries a map-ready course and never sends it back to the server", async () => {
+  const bodies = [];
+  global.fetch = async (url, init = {}) => {
+    bodies.push(JSON.parse(init.body));
+    return sse([["delta", { text: "코스예요" }], ["done", courseDone("코스예요")]]);
+  };
+  const reply = await sendGuestChatMessage({ messages: [{ role: "user", content: "차 타고 잠실 코스" }] });
+  assert.equal(reply.completionStatus, "completed");
+  assert.equal(reply.course.stadiumCode, "JAMSIL");
+  assert.equal(reply.course.travelMode, "car");
+  assert.deepEqual(reply.course.places.map(place => place.name), ["상무초밥 잠실점", "잠실야구장", "잠실 게스트하우스"]);
+  assert.deepEqual(reply.course.notes, ["주차: 종합운동장 주차 — 876면"]);
+  await sendGuestChatMessage({ messages: [
+    { role: "user", content: "차 타고 잠실 코스" }, { role: "assistant", content: "코스예요", course: reply.course }, { role: "user", content: "고마워" },
+  ] });
+  assert.deepEqual(Object.keys(bodies[1].messages[1]).sort(), ["content", "role"]);
+});
+
+test("member course answer keeps the course only when the turn completed", async () => {
+  saveMemberTokens("access-token", "refresh-token");
+  global.fetch = async (url, init = {}) => {
+    if (String(url).includes("/finalize/")) {
+      const body = JSON.parse(init.body);
+      return json({ turn_id: "turn-course", session_id: 5, status: body.status, user_message_id: 1, assistant_message_id: 2, assistant_message: body.prefix });
+    }
+    return sse([
+      ["checkpoint", { turn_id: "turn-course", receipt: "empty" }],
+      ["delta", { turn_id: "turn-course", receipt: "part", text: "코스" }],
+      ["done", { turn_id: "turn-course", receipt: "complete", ...courseDone("코스") }],
+    ]);
+  };
+  const reply = await sendChatMessage({ sessionId: 5, messages: [{ role: "user", content: "잠실 코스" }] });
+  assert.equal(reply.course.places.length, 3);
+  assert.equal(reply.course.title, "09-16 잠실야구장 직관 코스 (데이트)");
+});
+
+test("course parsing ignores non-course answers and builds editable stops", () => {
+  assert.equal(parseChatCourse({ assistant_message: "LG는 3위예요" }), undefined);
+  assert.equal(parseChatCourse({ places: [{ phase: "GAME", name: "잠실야구장", lat: 37.5, lng: 127, category: "STADIUM" }] }), undefined);
+  const course = parseChatCourse({ places: coursePlaces, stadiumCode: "JAMSIL", travel: { mode: "walk" } });
+  assert.equal(course.travelMode, "walk");
+  let id = 0;
+  const stops = courseToStops(course, () => `id-${++id}`);
+  assert.deepEqual(stops.map(stop => [stop.name, stop.category, stop.placeId, stop.isDrawnPoint]), [
+    ["상무초밥 잠실점", "먹거리", "123456", true],
+    ["잠실야구장", "야구장", "chat:stadium:JAMSIL", true],
+    ["잠실 게스트하우스", "숙박", "555", true],
+  ]);
+  assert.ok(stops.every(stop => stop.visitId));
 });
 
 test("guest read failure is retryable while failed member auth never falls back to guest", async () => {

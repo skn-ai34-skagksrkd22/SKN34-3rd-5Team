@@ -5,7 +5,7 @@ export type TourItem = {
   mapx?: string; mapy?: string; addr1?: string; addr2?: string; tel?: string;
   cat3?: string; lclsSystm3?: string;
 };
-export type TourResult = { status: "ok" | "partial" | "unconfigured" | "error"; places: NearbyPlace[]; truncated: boolean };
+export type TourResult = { status: "ok" | "partial" | "unconfigured" | "error"; places: NearbyPlace[]; truncated: boolean; stale?: boolean; warning?: string; fetchedAt?: string | null; lastSyncedAt?: string | null };
 export const TOUR_CONTENT_TYPES = ["12", "14", "28"] as const;
 
 // Names verified against TourAPI categoryCode2 (A02 > A0206).

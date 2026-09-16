@@ -16,6 +16,9 @@ import { retryRoutes, saveRoute, useRoutes, useRoutesError, useRoutesReady, type
 import { withCourseStart } from "@/lib/drawn-course";
 import { browserDraftStorage, createDraftAutosave, readRouteDraft, recoverRouteDraft, removeRouteDraft, saveRouteDraft, type MemoryRouteDraft, type RouteDraftData } from "@/lib/route-draft";
 import type { TravelMode } from "@/lib/course-directions";
+import { courseToStops } from "@/lib/chat/course";
+import type { ChatCourse } from "@/lib/chat/types";
+import { MAX_ROUTE_STOPS, sameStop } from "@/lib/nearby-places";
 
 function WriterIcon({ kind }: { kind: "spark" | "pin" | "arrow" | "save" }) {
   return (
@@ -73,7 +76,7 @@ export default function RouteWriter({ editId, copyId, initialStadium }: { editId
 
 function WriterForm({ stadiums, initial, existing, copying = false }: { stadiums: Stadium[]; initial: Stadium; existing?: TripRoute; copying?: boolean }) {
   const router = useRouter();
-  const { onContextChange } = useChat();
+  const { onContextChange, registerCourseTarget, takePendingCourse } = useChat();
   const draftKey = existing ? `${copying ? "copy" : "edit"}:${existing.id}` : `new:${initial.code}`;
   const [storage] = useState(browserDraftStorage);
   const [storedDraft] = useState(() => readRouteDraft(storage, draftKey));
@@ -99,6 +102,10 @@ function WriterForm({ stadiums, initial, existing, copying = false }: { stadiums
   const [draftStatus, setDraftStatus] = useState(() => storedDraft.error ? "브라우저 저장 공간을 읽지 못했어요. 변경 내용은 이 화면에만 남아 있어요." : storedDraft.raw && (!storedDraft.draft || !restoredDraft) ? "기존 임시저장 데이터를 확인할 수 없어 덮어쓰지 않았어요." : memoryDraft ? "이 화면에 남아 있던 미저장 변경을 복원했어요." : restoredDraft && storedDraft.draft ? `${new Date(storedDraft.draft.updatedAt).toLocaleString("ko-KR")} 임시저장을 복원했어요.` : "변경 사항 없음");
   const [saving, setSaving] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  // 챗봇 코스를 담은 횟수·구장. 지도(planner)가 이 값이 바뀌면 "내 코스" 탭을 열고 코스 전체를 보여준다.
+  const [courseApplied, setCourseApplied] = useState<{ version: number; stadiumCode: string } | null>(null);
+  // 챗봇이 채워 준 제목·본문. 사용자가 손대지 않았으면 다음 추천 코스로 다시 바꿔 준다.
+  const autoFilled = useRef<{ title?: string; content?: string }>({});
   const dirty = useRef(recovery.dirty);
   const savingRef = useRef(false);
   const expectedRaw = useRef(recovery.expectedRaw);
@@ -190,6 +197,44 @@ function WriterForm({ stadiums, initial, existing, copying = false }: { stadiums
     if (next === latest.current.travelMode) return;
     setTravelMode(next); markDirty();
   }, [markDirty]);
+  const applyCourse = useCallback((course: ChatCourse, how: "replace" | "append") => {
+    const target = course.stadiumCode ? stadiums.find(stadium => matchesStadium(stadium, course.stadiumCode!)) : stadiums.find(stadium => stadium.code === latest.current.stadiumCode);
+    if (!target) return null;
+    const before = latest.current;
+    const sameStadium = target.code === before.stadiumCode;
+    const base = how === "append" && sameStadium ? before.stops : [];
+    const incoming = courseToStops(course).filter(stop => !base.some(existing => sameStop(existing, stop)));
+    setStadiumCode(target.code);
+    setStops([...base, ...incoming].slice(0, MAX_ROUTE_STOPS));
+    if (!sameStadium) setStart(undefined);
+    if (course.travelMode) setTravelMode(course.travelMode);
+    const filled = autoFilled.current;
+    if (course.title && (!before.title.trim() || before.title === filled.title)) { setTitle(course.title); filled.title = course.title; }
+    if (course.content && (!routeContentToText(before.content, before.contentFormat).trim() || (before.contentFormat === undefined && before.content === filled.content))) {
+      setContent(course.content); setContentFormat(undefined); filled.content = course.content;
+    }
+    setTab("write");
+    setPlannerMode("places"); // 챗봇 코스는 장소 핀 방식으로 그린다 (동선 모드면 전환)
+    setCourseApplied(previous => ({ version: (previous?.version ?? 0) + 1, stadiumCode: target.code }));
+    markDirty();
+    return () => {
+      setStadiumCode(before.stadiumCode); setStops(before.stops); setStart(before.start); setTravelMode(before.travelMode);
+      setTitle(before.title); setContent(before.content); setContentFormat(before.contentFormat);
+      setCourseApplied(previous => ({ version: (previous?.version ?? 0) + 1, stadiumCode: before.stadiumCode }));
+      markDirty();
+    };
+  }, [stadiums, markDirty]);
+  const applyCourseRef = useRef(applyCourse);
+  useLayoutEffect(() => { applyCourseRef.current = applyCourse; }, [applyCourse]);
+  useEffect(() => {
+    registerCourseTarget({ stadiumCode, stopCount: stops.length, apply: (course, how) => applyCourseRef.current(course, how) });
+  }, [registerCourseTarget, stadiumCode, stops.length]);
+  useEffect(() => () => registerCourseTarget(null), [registerCourseTarget]);
+  useEffect(() => {
+    // 전체 채팅 화면에서 "루트 작성 지도에서 열기"로 넘어온 코스
+    const pending = takePendingCourse();
+    if (pending) applyCourseRef.current(pending, "replace");
+  }, [takePendingCourse]);
   if (!current) return <main className="container writer-empty"><h1>초안의 구장을 사용할 수 없어요</h1><p>구장이 삭제됐거나 좌표를 확인할 수 없어요. 초안은 지우지 않았습니다.</p><Link href="/routes/new" className="button button-secondary">새 루트에서 구장 선택하기</Link></main>;
   const selectedStadium = current;
   function changeStadium(code: string) {
@@ -278,7 +323,7 @@ function WriterForm({ stadiums, initial, existing, copying = false }: { stadiums
                 </div>
                 <div className="writer-field planner-stadium-field"><label className="sr-only" htmlFor="route-stadium">구장 선택</label><select id="route-stadium" aria-label="구장 선택" value={stadiumCode} disabled={plannerCompleted} onChange={(event) => changeStadium(event.target.value)}>{stadiums.map((stadium) => <option key={stadium.code} value={stadium.code}>{stadium.name}</option>)}</select></div>
               </div>
-              <NearbyRoutePlanner key={`${stadiumCode}:${plannerMode}`} plannerMode={plannerMode} stadium={current} stops={stops} onChange={changeStops} initialStart={start} onStartChange={changeStart} initialTravelMode={travelMode} onTravelModeChange={changeTravelMode} courseName={title} onCourseNameChange={(name) => { setTitle(name); markDirty(); }} onSaveCourse={() => saveCourse()} saving={saving} saveError={error} startWithAllPlaces={copying} onCompletionChange={setPlannerCompleted} />
+              <NearbyRoutePlanner key={`${stadiumCode}:${plannerMode}`} plannerMode={plannerMode} stadium={current} stops={stops} onChange={changeStops} initialStart={start} onStartChange={changeStart} initialTravelMode={travelMode} travelMode={travelMode} courseApplied={courseApplied} onTravelModeChange={changeTravelMode} courseName={title} onCourseNameChange={(name) => { setTitle(name); markDirty(); }} onSaveCourse={() => saveCourse()} saving={saving} saveError={error} startWithAllPlaces={copying} onCompletionChange={setPlannerCompleted} />
             </section>
             <div className="writer-writing writer-panel" id="writer-panel-write" role="tabpanel" aria-labelledby="writer-tab-write" tabIndex={0}>
               <section className="writer-card">

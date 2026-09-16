@@ -203,3 +203,53 @@ class CourseReactionRequestSerializer(serializers.Serializer):
 @extend_schema_serializer(component_name="CourseViewResult")
 class CourseViewResultSerializer(serializers.Serializer):
     views = serializers.IntegerField(min_value=0)
+
+
+class StrictObjectSerializer(serializers.Serializer):
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("객체를 입력해 주세요.")
+        unknown = set(data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError({name: "지원하지 않는 필드입니다." for name in sorted(unknown)})
+        return super().to_internal_value(data)
+
+
+class StrictFiniteFloatField(FiniteFloatField):
+    def to_internal_value(self, data):
+        if not isinstance(data, (int, float)) or isinstance(data, bool):
+            raise serializers.ValidationError("숫자를 입력해 주세요.")
+        return super().to_internal_value(data)
+
+
+class TravelPointSerializer(StrictObjectSerializer):
+    lat = StrictFiniteFloatField(min_value=-90, max_value=90)
+    lng = StrictFiniteFloatField(min_value=-180, max_value=180)
+
+
+class DirectionsRequestSerializer(StrictObjectSerializer):
+    action = serializers.ChoiceField(choices=("directions",), required=False)
+    mode = serializers.ChoiceField(choices=("walk", "car", "transit"))
+    points = serializers.ListField(child=TravelPointSerializer(), min_length=2, max_length=13)
+
+
+class DirectionsLegSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=("ok", "error"))
+    distance = serializers.IntegerField(allow_null=True)
+    seconds = serializers.IntegerField(allow_null=True)
+    paths = serializers.ListField(child=serializers.ListField(child=TravelPointSerializer()))
+    instructions = serializers.ListField(child=serializers.CharField())
+    stale = serializers.BooleanField(required=False)
+    warning = serializers.CharField(required=False, allow_null=True)
+    error = serializers.CharField(required=False)
+
+
+class DirectionsResponseSerializer(serializers.Serializer):
+    mode = serializers.ChoiceField(choices=("walk", "car", "transit"))
+    legs = DirectionsLegSerializer(many=True)
+    distance = serializers.IntegerField(allow_null=True)
+    seconds = serializers.IntegerField(allow_null=True)
+
+
+class DirectionsErrorSerializer(serializers.Serializer):
+    error = serializers.CharField()

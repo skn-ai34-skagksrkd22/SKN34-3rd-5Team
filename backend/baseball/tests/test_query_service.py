@@ -25,7 +25,8 @@ class BaseballQueryServiceTest(SimpleTestCase):
     def test_all_19_models_and_foreign_keys_are_in_schema(self):
         schema = BaseballQueryRepository().get_schema()
         tables = {table["name"]: table for table in schema["tables"]}
-        self.assertEqual(len(tables), 19)
+        # 직관 도메인 19개 + 외부 제공자 통합(bef6de9)으로 늘어난 baseball_* 9개
+        self.assertEqual(len(tables), 28)
         self.assertEqual(schema["schema"], "public")
         self.assertEqual(tables["GAME"]["quoted_name"], '"GAME"')
         game_columns = {column["name"]: column for column in tables["GAME"]["columns"]}
@@ -45,6 +46,17 @@ class BaseballQueryServiceTest(SimpleTestCase):
         for query in queries:
             with self.subTest(query=query):
                 self.service.execute_baseball_select(query, {}, 20)
+        self.assertEqual(self.repository.execute_readonly.call_count, len(queries))
+
+    def test_boolean_conditions_and_case_are_allowed(self):
+        queries = (
+            'SELECT COUNT(*) FROM "GAME" g JOIN "TEAM" t ON t.id=g.home_team_id WHERE t.team_code = %(team)s AND g.game_date >= CURRENT_DATE',
+            'SELECT * FROM "GAME" WHERE home_score > away_score OR home_score IS NULL',
+            'SELECT CASE WHEN home_score > away_score THEN 1 ELSE 0 END AS home_win FROM "GAME"',
+        )
+        for query in queries:
+            with self.subTest(query=query):
+                self.service.execute_baseball_select(query, {"team": "KIA"}, 20)
         self.assertEqual(self.repository.execute_readonly.call_count, len(queries))
 
     def test_named_parameter_is_not_interpolated(self):
