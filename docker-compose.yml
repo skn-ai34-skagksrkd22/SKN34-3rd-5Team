@@ -48,6 +48,7 @@ services:
       EMAIL_USE_TLS: ${EMAIL_USE_TLS:-false}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-}
       DEMO_USERS_ENABLED: ${DEMO_USERS_ENABLED:-false}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
 
       # Docker 내부에서는 db 서비스명으로 접근
       DB_HOST: db

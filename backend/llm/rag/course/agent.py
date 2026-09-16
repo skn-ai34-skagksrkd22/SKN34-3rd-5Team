@@ -86,9 +86,7 @@ def answer_public_course(question, history):
         "편집 토큰이나 비공개 내부 식별자를 추측하거나 노출하지 않는다."
     )), *[HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"])
           for m in history[-4:]], HumanMessage(content=question)]
-    response = run_model(
-        llm(), messages, "course", tool_names={"search_courses", "get_course"}, require_first_tool=True,
-    )
+    response = run_model(llm(), messages, "course", require_first_tool=True)
     text = response.content if isinstance(response.content, str) else "".join(
         part.get("text", "") for part in response.content if isinstance(part, dict))
     return {"answer": text, "sources": [], "route": "course:public_lookup", "places": [], "coursePayload": None, "timing": {}}
@@ -415,7 +413,7 @@ def build_answer(intro, course, lookup, tl, walk, sl, assumed, travel=None):
 
 
 # ── 6. 진입점 ─────────────────────────────────────────────────────────────────
-def answer(question, history=None, hint_stadium=None):
+def _answer(question, history=None, hint_stadium=None):
     history = history or []
     if PUBLIC_COURSE_LOOKUP.search(question):
         return answer_public_course(question, history)
@@ -635,3 +633,9 @@ def answer(question, history=None, hint_stadium=None):
                                              walk_summary=walk, total_min=tl["totalMin"], slots_info=sl,
                                              travel_info=travel),
     }
+
+
+def answer(question, history=None, hint_stadium=None):
+    from ..assistant.tools import request_state
+    with request_state(hint_stadium, question, history):
+        return _answer(question, history, hint_stadium)

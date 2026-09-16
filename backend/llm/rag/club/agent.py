@@ -57,10 +57,7 @@ def answer_community_tools(question, history, timing, route):
         "반드시 호출하고 그 결과만 근거로 답한다. 팬 투표 비율은 실제 승리 확률이 아니라고 밝힌다."
     )), *_to_lc(history[-4:]), HumanMessage(content=question)]
     t0 = time.perf_counter()
-    response = run_model(
-        llm(), messages, "club", tool_names={"search_community_posts", "get_prediction_games"},
-        require_first_tool=True,
-    )
+    response = run_model(llm(), messages, "club", require_first_tool=True)
     timing["tool_ms"] = round((time.perf_counter() - t0) * 1000)
     text = response.content if isinstance(response.content, str) else "".join(
         part.get("text", "") for part in response.content if isinstance(part, dict))
@@ -244,7 +241,7 @@ def slots_from_history(history, today=None):
 
 
 # ── 진입점 ──────────────────────────────────────────────────────────────────
-def answer(question, history=None, hint_stadium=None):
+def _answer(question, history=None, hint_stadium=None):
     history = history or []
     today = date.today().isoformat()
     timing = {}
@@ -364,3 +361,9 @@ def answer(question, history=None, hint_stadium=None):
                 "stadium": r["stadium"], "updated_at": r.get("updated_at") or ""} for r in rows]
     route.append(f"rag:{stadium or '-'}:{','.join(cats) or '-'}")
     return {"answer": raw, "sources": sources, "route": " ".join(route), "timing": timing}
+
+
+def answer(question, history=None, hint_stadium=None):
+    from ..assistant.tools import request_state
+    with request_state(hint_stadium, question, history):
+        return _answer(question, history, hint_stadium)

@@ -12,8 +12,6 @@ from langchain_openai import ChatOpenAI
 
 from .chat_message_histories import DjangoChatMessageHistory
 from .models import ChatSession
-from .tools import create_default_tools
-
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
@@ -24,7 +22,10 @@ class ChatService:
 
     def __init__(self, llm=None, tools=None):
         self.llm = llm or ChatOpenAI(model="gpt-5.6-luna", temperature=0, timeout=30, max_retries=0, reasoning_effort="none")
-        self.tools = tuple(create_default_tools() if tools is None else tools)
+        if tools is None:
+            from .rag.domain_tools import tools_for
+            tools = tools_for("chat")
+        self.tools = tuple(tools)
         self.tool_map = {tool.name: tool for tool in self.tools}
         self.prompt = self.get_prompt()
         self.chain = self.prompt | (
@@ -86,7 +87,7 @@ class ChatService:
             results.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
         return results, schema_seen
 
-    def _run(self, values):
+    def _run_scoped(self, values):
         # 항상 KBO 직관 RAG 파이프라인이 답한다 (RAG + 야구 DB 도구). 테스트 중에만 None → 아래 도구 루프 그대로.
         # 지연 import: RAG 모듈이 깨져도 서버 기동은 되게.
         from .rag.pipeline import chat_chain
@@ -111,6 +112,12 @@ class ChatService:
             calls += len(tool_messages)
             scratchpad.extend((message, *tool_messages))
         return limit_answer
+
+    def _run(self, values):
+        from .rag.assistant.tools import request_state
+        from .rag.pipeline import normalize_history
+        with request_state(None, values.get("question", ""), normalize_history(values.get("chat_history"))):
+            return self._run_scoped(values)
 
     def _plan_stream(self, values):
         scratchpad, schema_seen, calls = [], False, 0
@@ -173,13 +180,15 @@ class ChatService:
 
     def stream_with_history(self, messages, question: str):
         """주어진 제한된 기록으로 모델 청크를 내보냅니다."""
-        from .rag.pipeline import chat_chain
+        from .rag.assistant.tools import request_state
+        from .rag.pipeline import chat_chain, normalize_history
 
-        if rag := chat_chain():
-            yield from rag.stream({"question": question, "chat_history": messages})
-            return
-        inputs = self._plan_stream({"question": question, "chat_history": messages})
-        if inputs is None:
-            yield "도구 호출 한도를 초과해 조회를 완료하지 못했습니다. 질문 범위를 줄여 주세요."
-            return
-        yield from self._stream_final(inputs)
+        with request_state(None, question, normalize_history(messages)):
+            if rag := chat_chain():
+                yield from rag.stream({"question": question, "chat_history": messages})
+                return
+            inputs = self._plan_stream({"question": question, "chat_history": messages})
+            if inputs is None:
+                yield "도구 호출 한도를 초과해 조회를 완료하지 못했습니다. 질문 범위를 줄여 주세요."
+                return
+            yield from self._stream_final(inputs)

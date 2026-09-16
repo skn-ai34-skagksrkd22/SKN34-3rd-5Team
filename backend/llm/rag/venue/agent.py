@@ -249,6 +249,7 @@ def llm():
 
 
 def transform_query(query: str) -> str:
+    """검색어만 다듬는 보조 LLM 호출이며 답변 에이전트/도구 루프가 아니다."""
     global _transformer
     if _transformer is None:
         prompt = ChatPromptTemplate.from_messages([("system", QUERY_TRANSFORM), ("human", "{query}")])
@@ -268,7 +269,7 @@ def search_documents_tool(query: str) -> str:
 def agent():
     global _agent
     if _agent is None:
-        _agent = create_agent(model=llm(), tools=[search_documents_tool, *tools_for("venue")], system_prompt=SYSTEM)
+        _agent = create_agent(model=llm(), tools=tools_for("venue"), system_prompt=SYSTEM)
     return _agent
 
 
@@ -282,7 +283,7 @@ def _stadium_from_history(history):
     return {}
 
 
-def answer(question, history=None, hint_stadium=None):
+def _answer(question, history=None, hint_stadium=None):
     if not READY:
         raise RuntimeError("venue 도메인 비활성화 (langchain 패키지 없음)")
     history = history or []
@@ -324,3 +325,9 @@ def answer(question, history=None, hint_stadium=None):
     route.append(f"agent:{'tool' if tool_called else 'no_tool'}:{last.get('search_method', '-')}"
                  f":{slots.get('stadium_code')}:{','.join(slots.get('categories') or []) or '-'}")
     return {"answer": text, "sources": sources, "route": " ".join(route), "timing": timing}
+
+
+def answer(question, history=None, hint_stadium=None):
+    from ..assistant.tools import request_state
+    with request_state(hint_stadium, question, history):
+        return _answer(question, history, hint_stadium)

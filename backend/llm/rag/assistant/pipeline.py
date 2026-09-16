@@ -127,8 +127,8 @@ def chain():
     return _chain
 
 
-def answer(question, history=None, hint_stadium=None, _chain_obj=None):
-    st = tools.new_state(hint_stadium, question=question, history=history)
+def _answer(question, history=None, hint_stadium=None, _chain_obj=None):
+    st = tools.state()
     t0 = time.perf_counter()
     text = (_chain_obj or chain()).invoke(
         {"question": question, "history": history or [], "hint": hint_stadium},
@@ -150,3 +150,8 @@ def answer(question, history=None, hint_stadium=None, _chain_obj=None):
         if course.get(key):
             out[key] = course[key]
     return out
+
+
+def answer(question, history=None, hint_stadium=None, _chain_obj=None):
+    with tools.request_state(hint_stadium, question, history):
+        return _answer(question, history, hint_stadium, _chain_obj)

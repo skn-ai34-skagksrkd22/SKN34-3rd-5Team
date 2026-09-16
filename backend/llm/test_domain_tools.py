@@ -87,8 +87,27 @@ class DomainToolsTest(TestCase):
         self.assertEqual(default_names[:len(EXPECTED_NAMES)], EXPECTED_NAMES)
         self.assertEqual(default_names[-2:], ("get_baseball_schema", "execute_baseball_select"))
         model = RunnableLambda(lambda _: AIMessage(content="테스트"))
-        self.assertEqual(tuple(tool.name for tool in ChatService(llm=model).tools), default_names)
+        self.assertEqual(tuple(tool.name for tool in ChatService(llm=model).tools),
+                         tuple(tool.name for tool in domain_tools.tools_for("chat")))
         self.assertEqual(ChatService(llm=model, tools=()).tools, ())
+
+    def test_deterministic_invoke_keeps_canonical_schemas_and_dict_results(self):
+        fresh = {"stale": False, "warning": None}
+        with (
+            patch("llm.tools.domain.tving_service.ensure_game_range_fresh", return_value=fresh),
+            patch("llm.tools.domain.tving_service.ensure_standings_fresh", return_value=fresh),
+        ):
+            games = domain_tools.invoke("course", "get_games", {
+                "start_date": "2099-09-15", "end_date": "2099-09-15", "team_code": "LG",
+            })
+            standings = domain_tools.invoke("club", "get_standings", {"snapshot_date": "2099-09-15"})
+            prices = domain_tools.invoke("club", "get_ticket_prices", {
+                "season": 2099, "team_code": "LG", "stadium_id": self.stadium.pk, "as_of": "2099-09-15",
+            })
+        self.assertIsInstance(games, dict)
+        self.assertEqual(games["items"][0]["game_code"], "TEST-G1")
+        self.assertEqual(standings["items"][0]["rank"], 1)
+        self.assertEqual(prices["items"][0]["price_krw"], 20000)
 
     def test_all_orm_tools_return_public_stably_sorted_data(self):
         calls = {

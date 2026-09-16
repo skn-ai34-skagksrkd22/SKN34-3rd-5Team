@@ -17,6 +17,7 @@ DB 조회 (BASEBALL_DB_USER 읽기 전용 계정 · 성호 BaseballQueryService 
 """
 import contextvars
 import json
+from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import Any, Literal
 
@@ -43,12 +44,27 @@ STATUS = {"upcoming": "PREV", "finished": "END", "canceled": "CANCEL"}
 _STATE: contextvars.ContextVar[dict] = contextvars.ContextVar("assistant_state")
 
 
+def _new_state(hint_stadium=None, question="", history=None):
+    return {"hint": hint_stadium, "question": question, "history": history or [], "schema_seen": False,
+            "tools": [], "sources": [], "course": None}
+
+
 def new_state(hint_stadium=None, question="", history=None) -> dict:
-    """요청 시작 때 부른다. 반환한 dict 를 요청이 끝날 때까지 도구들이 같이 쓴다."""
-    st = {"hint": hint_stadium, "question": question, "history": history or [], "schema_seen": False,
-          "tools": [], "sources": [], "course": None}
+    """테스트/직접 도구 호출용 상태를 만든다. 답변 진입점은 request_state를 쓴다."""
+    st = _new_state(hint_stadium, question, history)
     _STATE.set(st)
     return st
+
+
+@contextmanager
+def request_state(hint_stadium=None, question="", history=None):
+    """한 답변 요청 동안만 assistant 도구 상태를 공유하고 부모 상태를 복원한다."""
+    st = _new_state(hint_stadium, question, history)
+    token = _STATE.set(st)
+    try:
+        yield st
+    finally:
+        _STATE.reset(token)
 
 
 def state() -> dict:
@@ -351,6 +367,9 @@ def plan_course(request, _course=None) -> str:
     """직관 코스(경기 전 → 구장 → 경기 후, 요청 시 숙소)를 짠다. 결과는 옆 지도와 코스 카드에 그대로 표시된다."""
     s = state()
     s["tools"].append("course")
+    from ..domain_tools import active_domain
+    if active_domain() == "course":
+        return "현재 코스 생성 중에는 plan_course를 다시 호출할 수 없습니다. 주어진 후보로 답하세요."
     if _course is None:
         from ..course import agent as _course
     question = request if request and len(request) >= len(s.get("question") or "") else (s.get("question") or request)
@@ -360,13 +379,23 @@ def plan_course(request, _course=None) -> str:
     return result.get("answer") or "코스를 짜지 못했습니다."
 
 
-def build_tools():
+def build_specialized_tools():
     def tool(fn, schema):
         return StructuredTool.from_function(fn, name=fn.__name__, args_schema=schema, description=fn.__doc__,
                                             handle_validation_error="도구 인자 형식이 올바르지 않습니다. 설명을 보고 다시 부르세요.")
-    return [
-        tool(get_games, GamesInput), tool(get_standings, StandingsInput),
-        tool(get_ticket_prices, PricesInput), tool(get_ticket_policy, PolicyInput),
-        tool(get_baseball_schema, NoInput), tool(execute_baseball_select, SelectInput),
-        tool(search_kbo_documents, SearchInput), tool(search_nearby_places, NearbyInput), tool(plan_course, CourseInput),
-    ]
+    return (
+        tool(get_games, GamesInput),
+        tool(get_standings, StandingsInput),
+        tool(get_ticket_prices, PricesInput),
+        tool(get_ticket_policy, PolicyInput),
+        tool(get_baseball_schema, NoInput),
+        tool(execute_baseball_select, SelectInput),
+        tool(search_kbo_documents, SearchInput),
+        tool(search_nearby_places, NearbyInput),
+        tool(plan_course, CourseInput),
+    )
+
+
+def build_tools():
+    from ..domain_tools import tools_for
+    return list(tools_for("assistant"))

@@ -19,6 +19,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from ..club.router import detect_stadium
+from ..domain_tools import run_model
 from ..persona import FIXED
 from . import kakao
 from .prompts import NO_KEY, NO_PLACES, SYSTEM, USER
@@ -104,7 +105,7 @@ def template_answer(places, stadium_ko, kind_label):
     return "\n".join(lines)
 
 
-def answer(question, history=None, hint_stadium=None):
+def _answer(question, history=None, hint_stadium=None):
     timing, route = {}, []
     kinds = kinds_of(question) or ["walk"]
     kind = kinds[0]                                   # 한 번에 한 종류 (여러 개면 앞의 것)
@@ -129,8 +130,9 @@ def answer(question, history=None, hint_stadium=None):
     try:
         t0 = time.perf_counter()
         system = SYSTEM.replace("{kinds}", kind_label).replace("{kind_label}", kind_label)
-        out = llm().invoke([SystemMessage(content=system),
-                            HumanMessage(content=USER.format(stadium=stadium_ko, places=places_text(places), question=question))]).content
+        out = run_model(llm(), [SystemMessage(content=system), HumanMessage(content=USER.format(
+            stadium=stadium_ko, places=places_text(places), question=question,
+        ))], "nearby").content
         timing["llm_ms"] = round((time.perf_counter() - t0) * 1000)
         text = out if isinstance(out, str) else "".join(p.get("text", "") for p in out if isinstance(p, dict))
         text = text.strip() or template_answer(places, stadium_ko, kind_label)
@@ -140,3 +142,9 @@ def answer(question, history=None, hint_stadium=None):
         route.append("template")
     route.append(f"nearby:{kind}:{len(places)}")
     return {"answer": text, "sources": sources, "route": " ".join(route), "timing": timing}
+
+
+def answer(question, history=None, hint_stadium=None):
+    from ..assistant.tools import request_state
+    with request_state(hint_stadium, question, history):
+        return _answer(question, history, hint_stadium)

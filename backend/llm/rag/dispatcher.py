@@ -50,6 +50,10 @@ COURSE = re.compile(r"코스|루트|동선|일정\s*짜|계획\s*(짜|세워)|�
 OFF_TOPIC = re.compile(r"축구|K리그|농구|배구|골프|e스포츠|롤드컵|올림픽|월드컵|"
                        r"날씨|주식|코인|부동산|영화|드라마|아이돌|연예인|다이어트|"
                        r"코딩|파이썬|숙제|레시피|요리법")
+# 야구 단어가 섞여 있어도 절대 답하지 않는 주제 — 직관 준비와 접점이 없어서 BASEBALL 예외를 안 준다.
+# ("야구 좋아하는데 코딩 알려줘", "야구장 갈 때 탈 자동차 추천" 이 에이전트 LLM 으로 새는 것을 막는다 · 2026-09-16)
+HARD_OFF = re.compile(r"코딩|파이썬|프로그래밍|숙제|과제\s*좀|레시피|요리법|주식|코인|비트코인|부동산|로또|"
+                      r"(?:자동차|차량)\s*(?:추천|뭐\s*살|살까|구매|바꾸|바꿀)")
 BASEBALL = re.compile(r"야구|KBO|구장|직관|경기|반입|재입장|좌석|예매|순위|선수|"
                       r"잠실|고척|문학|수원|대전|대구|광주|사직|창원|포항|"
                       r"LG|두산|키움|SSG|KT|한화|삼성|KIA|기아|롯데|NC", re.I)
@@ -73,6 +77,8 @@ WEAK_CLUB_WORDS = {"얼마", "요금", "가격", "다음", "취소"}
 
 def route(question: str, intent: str | None = None) -> str:
     """'course' | 'nearby' | 'venue' | 'club' | 'both' | 'scope'. intent 는 프론트 context.intent ("route"|"baseball"|"stadium")"""
+    if HARD_OFF.search(question):
+        return "scope"
     if OFF_TOPIC.search(question) and not BASEBALL.search(question):
         return "scope"
     if intent == "route" or COURSE.search(question):
