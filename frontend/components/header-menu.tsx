@@ -1,10 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { useChat } from "./chat-provider";
-import { Icon } from "./icons";
+import { CapBot, Icon } from "./icons";
 
 const groups = [
   {
@@ -18,7 +19,7 @@ const groups = [
     ],
   },
   {
-    title: "직관 코스 짜기", icon: "route",
+    title: "직관 코스 짜기", icon: "route", image: "/images/icons/route-create.png",
     items: [
       { title: "코스 만들기", href: "/routes/new" },
       { title: "코스 둘러보기", href: "/routes" },
@@ -27,7 +28,6 @@ const groups = [
   {
     title: "커뮤니티", icon: "chat",
     items: [
-      { title: "직관", href: "/routes" },
       { title: "자유 게시판", href: "/community" },
       { title: "팀 게시판", href: "/community/teams" },
       { title: "승부 예측", href: "/community/predictions" },
@@ -88,7 +88,7 @@ function HeaderMenuContent({ pathname }: { pathname: string }) {
               <li key={group.title}>
                 <details className="header-menu-group" open={group.items.some(item => item.href === pathname) || (group.title === "직관 코스 짜기" && pathname.startsWith("/routes/")) || (group.title === "커뮤니티" && (pathname === "/community" || pathname.startsWith("/community/"))) ? true : undefined}>
                   <summary className="header-menu-category">
-                    <span className="header-menu-icon"><Icon name={group.icon} size={20} /></span>
+                    {"image" in group ? <span className="header-menu-icon has-image"><Image src={group.image} alt="" width={64} height={64} /></span> : <span className="header-menu-icon"><Icon name={group.icon} size={20} /></span>}
                     <span>{group.title}</span><Icon className="header-menu-chevron" name="chevron" size={16} />
                   </summary>
                   <ul className="header-menu-children">
@@ -105,7 +105,7 @@ function HeaderMenuContent({ pathname }: { pathname: string }) {
             ))}
             <li>
               <button className="header-menu-category" type="button" onClick={() => { closeMenu(); onExpand(); }}>
-                <span className="header-menu-icon"><Icon name="chat" size={20} /></span>
+                <span className="header-menu-icon"><CapBot size={24} /></span>
                 <span>챗봇</span><Icon className="header-menu-arrow" name="arrow" size={16} />
               </button>
             </li>

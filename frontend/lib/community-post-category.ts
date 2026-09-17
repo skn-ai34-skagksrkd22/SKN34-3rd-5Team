@@ -5,6 +5,14 @@ export const communityPostCategories = [
 ] as const;
 export type CommunityPostCategory = typeof communityPostCategories[number];
 
+// Keep the writer choices aligned with backend/community/models.py.
+const freePostCategories = ["질문", "잡담"] as const;
+const teamPostCategories = ["질문", "잡담", "경기토론", "굿즈", "사진·영상", "응원", "전력토론", "좌석·예매", "직관준비", "직관후기"] as const;
+
+export function writablePostCategories(board: "free" | "teams"): readonly CommunityPostCategory[] {
+  return board === "free" ? freePostCategories : teamPostCategories;
+}
+
 export const communityCategoryGroups = {
   일반: { color: "#52647b", categories: ["잡담", "질문"] },
   응원: { color: "#d52a32", categories: ["응원"] },

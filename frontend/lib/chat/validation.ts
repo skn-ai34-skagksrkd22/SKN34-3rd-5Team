@@ -38,6 +38,13 @@ export function parseChatRequest(value: unknown): ChatRequest {
       if (typeof value.context.intent !== "string" || !["route", "baseball", "stadium"].includes(value.context.intent)) throw new ChatError("대화 주제를 확인해 주세요.");
       context.intent = value.context.intent as ChatContext["intent"];
     }
+    if (value.context.origin !== undefined) {
+      const origin = value.context.origin;
+      if (!isRecord(origin) || typeof origin.lat !== "number" || typeof origin.lng !== "number"
+        || !Number.isFinite(origin.lat) || !Number.isFinite(origin.lng)
+        || Math.abs(origin.lat) > 90 || Math.abs(origin.lng) > 180) throw new ChatError("출발지 좌표를 확인해 주세요.");
+      context.origin = { lat: origin.lat, lng: origin.lng };
+    }
   }
   if (value.sessionId !== undefined && (!Number.isSafeInteger(value.sessionId) || Number(value.sessionId) < 1)) throw new ChatError("채팅방 번호를 확인해 주세요.");
   // Only the documented fields reach a provider; client-supplied model/system settings are discarded.

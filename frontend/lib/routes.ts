@@ -3,6 +3,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { fetchCourseReaction, fetchCourses, persistCourse, recordCourseView, removeCourse, setCourseReaction } from "./course-api";
 import { createClientId } from "./client-id";
+import { isRichContentDoc, type RichContentDoc } from "./community-rich-content";
 
 export type RouteStop = { name: string; lat: number; lng: number; category: string; placeId?: string; visitId?: string; address?: string; tourContentId?: string; isMapPoint?: boolean; isDrawnPoint?: boolean };
 export function areValidCoordinates(lat: unknown, lng: unknown): boolean {
@@ -12,7 +13,7 @@ export type TripRoute = {
   id: string; title: string; stadium: string; description: string; content: string;
   tags: string[]; duration: string; cover: string; stops: RouteStop[];
   author: string; likes: number; isSample: boolean; createdAt: string;
-  views?: number; contentFormat?: "html";
+  views?: number; contentFormat?: "html"; contentDoc?: RichContentDoc | null;
   routeNumber?: string;
   apiId?: string;
   start?: { lat: number; lng: number };
@@ -41,6 +42,7 @@ function isRoute(value: unknown): value is TripRoute {
     && typeof item.likes === "number" && Number.isFinite(item.likes) && typeof item.isSample === "boolean"
     && (item.views === undefined || (typeof item.views === "number" && Number.isFinite(item.views) && item.views >= 0))
     && (item.contentFormat === undefined || item.contentFormat === "html")
+    && (item.contentDoc === undefined || item.contentDoc === null || isRichContentDoc(item.contentDoc))
     && (item.owned === undefined || typeof item.owned === "boolean")
     && (item.legacy === undefined || typeof item.legacy === "boolean")
     && (item.legacySourceId === undefined || typeof item.legacySourceId === "string")

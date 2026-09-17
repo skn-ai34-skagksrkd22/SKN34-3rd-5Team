@@ -37,12 +37,15 @@ class CommunityPost(models.Model):
     author = models.CharField(max_length=80)
     title = models.CharField(max_length=200)
     content = models.TextField()
+    content_doc = models.JSONField(null=True, blank=True)
     category = models.CharField(max_length=20)
     created_at = models.DateTimeField(null=True, blank=True, default=timezone.now)
     views = models.PositiveIntegerField(default=0)
     recommendations = models.PositiveIntegerField(default=0)
     comment_count = models.PositiveIntegerField(default=0)
     is_sample = models.BooleanField(default=False)
+    # 신고 처리로 숨긴 글: 공개 목록·상세에서 보이지 않는다
+    is_hidden = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("post_number",)
@@ -113,12 +116,17 @@ class CommunityImage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     draft = models.ForeignKey(CommunityDraft, null=True, blank=True, on_delete=models.SET_NULL, related_name="images")
     post = models.ForeignKey(CommunityPost, null=True, blank=True, on_delete=models.SET_NULL, related_name="images")
+    course = models.ForeignKey("travel.Course", null=True, blank=True, on_delete=models.SET_NULL, related_name="images")
 
     class Meta:
         ordering = ("created_at", "id")
         constraints = (
             models.CheckConstraint(
-                condition=Q(draft__isnull=True) | Q(post__isnull=True),
+                condition=(
+                    (Q(draft__isnull=True) & Q(post__isnull=True))
+                    | (Q(draft__isnull=True) & Q(course__isnull=True))
+                    | (Q(post__isnull=True) & Q(course__isnull=True))
+                ),
                 name="community_image_single_target",
             ),
         )
@@ -156,6 +164,20 @@ class CommunityReport(models.Model):
     )
     detail = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # 관리자 처리 상태: 대기 / 보류 / 숨김 (삭제하면 글과 함께 신고도 지워진다)
+    status = models.CharField(
+        max_length=8,
+        choices=(("pending", "pending"), ("held", "held"), ("hidden", "hidden")),
+        default="pending",
+    )
+    handled_at = models.DateTimeField(null=True, blank=True)
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="handled_community_reports",
+    )
 
     class Meta:
         constraints = (

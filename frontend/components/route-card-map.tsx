@@ -59,7 +59,7 @@ export function RouteCardMap({ stops }: { stops: RouteStop[] }) {
     return () => { observer.disconnect(); pins.forEach(pin => pin.setMap(null)); };
   }, [map, sdk, stops, travel.data]);
 
-  return <div className="route-thumbnail" role="img" aria-label="내 코스의 방문 지점과 이동 경로 지도">
+  return <div className="route-thumbnail" role="img" aria-label="코스의 방문 지점과 이동 경로 지도">
     <div ref={host} className="route-thumbnail-map" aria-hidden="true" />
     {(error || travel.error) && <span className="route-thumbnail-status">{error ? "지도 미리보기를 불러오지 못했어요" : "이동 경로를 불러오지 못했어요"}</span>}
   </div>;

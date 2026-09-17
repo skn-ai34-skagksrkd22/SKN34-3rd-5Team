@@ -5,14 +5,20 @@ from contextlib import suppress
 from pathlib import Path
 
 from django.db import transaction
+from django.db.models import Max
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 
 from .chat_message_histories import DjangoChatMessageHistory
-from .models import ChatSession
+from .models import ChatSession, ChatTurn
+from .progress import ProgressCollector, collect, config_kwargs, current
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+
+class StaleChatHistoryError(RuntimeError):
+    pass
 
 
 class ChatService:
@@ -21,7 +27,7 @@ class ChatService:
     MAX_TOOL_CALLS = 4
 
     def __init__(self, llm=None, tools=None):
-        self.llm = llm or ChatOpenAI(model="gpt-5.6-luna", temperature=0, timeout=30, max_retries=0, reasoning_effort="none")
+        self.llm = llm or ChatOpenAI(model="gpt-5.6-luna", temperature=0, timeout=30, max_retries=0, reasoning_effort="medium", use_responses_api=True)
         if tools is None:
             from .rag.domain_tools import tools_for
             tools = tools_for("chat")
@@ -62,6 +68,9 @@ class ChatService:
     @staticmethod
     def _content(message):
         content = message if isinstance(message, str) else message.content
+        if isinstance(content, list):
+            from .rag.domain_tools import visible_text
+            content = visible_text(content)
         if not isinstance(content, str):
             raise ValueError("Malformed LLM response")
         return content
@@ -81,7 +90,7 @@ class ChatService:
             elif name == "execute_baseball_select" and not schema_seen:
                 content = "SQL 실행 전에 get_baseball_schema를 먼저 호출해야 합니다."
             else:
-                result = self.tool_map[name].invoke(args)
+                result = self.tool_map[name].invoke(args, **config_kwargs())
                 content = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
                 schema_seen |= name == "get_baseball_schema"
             results.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
@@ -98,7 +107,7 @@ class ChatService:
         limit_answer = "도구 호출 한도를 초과해 조회를 완료하지 못했습니다. 질문 범위를 줄여 주세요."
         for _ in range(self.MAX_TOOL_ROUNDS + 1):
             inputs = {**values, "tool_messages": scratchpad}
-            message = self.chain.invoke(inputs)
+            message = self.chain.invoke(inputs, **config_kwargs())
             if not getattr(message, "tool_calls", None):
                 answer = self._content(message)
                 if len(answer) > self.MAX_ANSWER_LENGTH:
@@ -123,7 +132,7 @@ class ChatService:
         scratchpad, schema_seen, calls = [], False, 0
         for _ in range(self.MAX_TOOL_ROUNDS + 1):
             inputs = {**values, "tool_messages": scratchpad}
-            message = self.chain.invoke(inputs)
+            message = self.chain.invoke(inputs, **config_kwargs())
             if not getattr(message, "tool_calls", None):
                 return inputs
             tool_messages, schema_seen = self._tool_messages(
@@ -138,7 +147,7 @@ class ChatService:
     def _stream_final(self, inputs):
         provider_stream, size = None, 0
         try:
-            provider_stream = self.final_chain.stream(inputs)
+            provider_stream = self.final_chain.stream(inputs, **config_kwargs())
             for chunk in provider_stream:
                 content = self._content(chunk)
                 if not content:
@@ -158,18 +167,42 @@ class ChatService:
         answer, _ = self.invoke_with_messages(user_id, conversation_id, question)
         return answer
 
-    @transaction.atomic
-    def invoke_with_messages(self, user_id: int, conversation_id: int, question: str):
+    def invoke_with_messages(self, user_id: int, conversation_id: int, question: str, turn=None):
         """응답과 이번 요청에서 저장한 두 행을 반환합니다."""
-        # ponytail: 응답 대기 중 채팅방 행을 잠금. 처리량이 늘면 방별 작업 큐로 전환.
-        session = ChatSession.objects.select_for_update().get(
-            pk=conversation_id, user_id=user_id
-        )
+        if turn is None:
+            with transaction.atomic():
+                session = ChatSession.objects.select_for_update().get(
+                    pk=conversation_id, user_id=user_id
+                )
+                base_sequence = session.messages.aggregate(last=Max("sequence_no"))["last"] or 0
+                turn = ChatTurn.objects.create(
+                    session=session, question=question, base_sequence=base_sequence
+                )
         history = self.get_chat_history(user_id, conversation_id)
-        answer = self._run({"question": question, "chat_history": history.messages})
-        # 저장 실패도 호출자에게 전달되도록 콜백 대신 직접 저장합니다.
-        saved = history.add_messages([HumanMessage(content=question), AIMessage(content=answer)])
-        session.save(update_fields=["updated_at"])
+        own_collector = current() is None
+        context = collect(ProgressCollector(turn.pk, persistent=True)) if own_collector else suppress()
+        try:
+            with context:
+                answer = self._run({"question": question, "chat_history": history.messages})
+        except Exception:
+            ChatTurn.objects.filter(pk=turn.pk, status="pending").update(status="failed")
+            raise
+        try:
+            with transaction.atomic():
+                session = ChatSession.objects.select_for_update().get(
+                    pk=conversation_id, user_id=user_id
+                )
+                turn = ChatTurn.objects.select_for_update().get(pk=turn.pk)
+                current_sequence = session.messages.aggregate(last=Max("sequence_no"))["last"] or 0
+                if current_sequence != turn.base_sequence:
+                    raise StaleChatHistoryError("chat history changed during response generation")
+                saved = history.add_messages([HumanMessage(content=question), AIMessage(content=answer)])
+                turn.human_message, turn.assistant_message, turn.status = saved[0], saved[1], "completed"
+                turn.save(update_fields=("human_message", "assistant_message", "status", "updated_at"))
+                session.save(update_fields=["updated_at"])
+        except Exception:
+            ChatTurn.objects.filter(pk=turn.pk, status="pending").update(status="failed")
+            raise
         return answer, saved
 
     def stream(self, user_id: int, conversation_id: int, question: str):

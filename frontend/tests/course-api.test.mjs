@@ -6,7 +6,7 @@ import ts from "typescript";
 const source = readFileSync(new URL("../lib/course-api.ts", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } });
 
-function harness() {
+function harness(memberFetch = async () => { throw new Error("unexpected authenticated request"); }) {
   const storage = new Map();
   let blocked = false;
   const window = { localStorage: {
@@ -14,7 +14,7 @@ function harness() {
     setItem: (key, value) => { if (blocked) throw new Error("quota"); storage.set(key, value); },
     removeItem: key => storage.delete(key),
   } };
-  let memberHandler = async () => Response.json({ detail: "인증이 필요합니다." }, { status: 401 });
+  let memberHandler = memberFetch;
   class ApiError extends Error {}
   const apiRequest = async (path, init, fetcher = fetch) => {
     const response = await fetcher(path, init);
@@ -32,6 +32,17 @@ function harness() {
   new Function("module", "exports", "window", "require", outputText)(testModule, testModule.exports, window, requireDependency);
   return { ...testModule.exports, storage, block: () => { blocked = true; }, member: handler => { memberHandler = handler; } };
 }
+
+test("default course writes use the member JWT request path while reads stay public", async () => {
+  const requests = [];
+  const api = harness(async (url, init) => {
+    requests.push([url, init.method]);
+    return Response.json(apiCourse({ editToken: "edit-secret" }), { status: 201 });
+  });
+  await api.fetchCourses(async () => Response.json([]));
+  await api.persistCourse(route());
+  assert.deepEqual(requests, [["/api/courses/", "POST"]]);
+});
 
 const apiCourse = changes => ({
   id: "123e4567-e89b-12d3-a456-426614174000", title: "잠실 직관 코스", stadium: "잠실야구장",
@@ -54,7 +65,7 @@ test("create sends ordered stops and stores only the returned edit token", async
     assert.equal(init.redirect, "error");
     assert.ok(init.signal instanceof AbortSignal);
     assert.deepEqual(JSON.parse(init.body), {
-      title: "잠실 직관 코스", stadium: "잠실야구장", content: "", contentFormat: "", duration: "반나절", tags: [],
+      title: "잠실 직관 코스", stadium: "잠실야구장", content: "", contentDoc: null, contentFormat: "", duration: "반나절", tags: [],
       startLat: 37.5, startLng: 127.1, stops: [{ name: "카페", category: "카페", placeId: "p1", lat: 37.51, lng: 127.07, position: 0 }],
     });
     return Response.json(apiCourse({ editToken: "edit-secret" }), { status: 201 });

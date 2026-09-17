@@ -18,6 +18,17 @@ export function withCourseStart(stops: RouteStop[], start?: { lat: number; lng: 
 
 // History records creation order, so reordering or deleting a point in the list
 // does not make Undo remove a different point (or an existing searched place).
+// Points that reached the list without the planner recording them (e.g. a course from
+// the chatbot) are appended in list order, so undo can remove them newest-first as well.
+export function withUntrackedPoints(stops: RouteStop[], history: string[]) {
+  const known = new Set(history);
+  const untracked = stops
+    .filter((stop) => stop.isMapPoint || stop.isDrawnPoint)
+    .map((stop) => stop.visitId ?? stop.placeId)
+    .filter((id): id is string => Boolean(id) && !known.has(id!));
+  return untracked.length ? [...history, ...untracked] : history;
+}
+
 export function undoDrawnPoint(stops: RouteStop[], history: string[]) {
   const remaining = [...history];
   while (remaining.length) {

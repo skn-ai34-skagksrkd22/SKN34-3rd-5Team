@@ -11,7 +11,7 @@ from .pagination import CommunityPostPageSerializer, CommunityPostPagination, Co
 from .serializers import CommunityPostPatchSerializer, CommunityPostSerializer, CommunityPostWriteSerializer
 
 
-POST_INPUT_FIELDS = ("board", "team_code", "category", "title", "content")
+POST_INPUT_FIELDS = ("board", "team_code", "category", "title", "content", "content_doc")
 
 
 def post_queryset():
@@ -19,11 +19,11 @@ def post_queryset():
         upvote_count=Count("votes", filter=Q(votes__value="up"), distinct=True),
         downvote_count=Count("votes", filter=Q(votes__value="down"), distinct=True),
         actual_comment_count=Count("comments", distinct=True),
-    ).order_by("post_number")
+    ).order_by("-post_number")
 
 
 def same_submission(post, validated_data):
-    return all(getattr(post, field) == validated_data[field] for field in POST_INPUT_FIELDS)
+    return all(getattr(post, field) == validated_data.get(field, None) for field in POST_INPUT_FIELDS)
 
 
 @extend_schema_view(
@@ -65,7 +65,8 @@ class CommunityPostListCreateView(generics.ListCreateAPIView):
         return (IsAuthenticated(),) if self.request.method == "POST" else (AllowAny(),)
 
     def get_queryset(self):
-        queryset = post_queryset()
+        # 신고 처리로 숨긴 글은 공개 목록에 나오지 않는다
+        queryset = post_queryset().filter(is_hidden=False)
         query = CommunityPostQuery.from_params(self.request.query_params)
         board = self.request.query_params.get("board")
         team = self.request.query_params.get("team")
@@ -101,10 +102,10 @@ class CommunityPostListCreateView(generics.ListCreateAPIView):
         if not key or len(key) > 128:
             raise ValidationError({"idempotencyKey": "1~128자의 Idempotency-Key가 필요합니다."})
 
-        serializer = self.get_serializer(data=request.data)
+        existing = CommunityPost.objects.filter(owner=request.user, idempotency_key=key).first()
+        serializer = self.get_serializer(existing, data=request.data) if existing else self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data
-        existing = CommunityPost.objects.filter(owner=request.user, idempotency_key=key).first()
         if existing:
             if not same_submission(existing, values):
                 return Response({"idempotencyKey": "같은 키로 다른 게시글을 만들 수 없습니다."}, status=status.HTTP_409_CONFLICT)
@@ -148,6 +149,9 @@ class CommunityPostDetailView(generics.RetrieveUpdateDestroyAPIView):
         return (AllowAny(),) if self.request.method in {"GET", "HEAD", "OPTIONS"} else (IsAuthenticated(),)
 
     def get_queryset(self):
+        # 숨긴 글은 관리자만 열람할 수 있다 (작성자의 수정·삭제는 그대로 허용)
+        if self.request.method == "GET" and not self.request.user.is_staff:
+            return post_queryset().filter(is_hidden=False)
         return post_queryset()
 
     def get_object(self):

@@ -1,6 +1,6 @@
 """프론트 챗봇 계약 — POST /chat/  (Next 서버가 CHAT_PROVIDER=backend 일 때 여기로 중계)
 
-계약 (docs/FRONTEND_BACKEND_HANDOFF.md 7장 · frontend/lib/chat/types.ts):
+계약 (docs/handoffs/FRONTEND_BACKEND_HANDOFF.md 7장 · frontend/lib/chat/types.ts):
   요청  {"messages": [{"role": "user"|"assistant", "content": "..."}], "sessionId"?: int,
          "context": {"stadium"?: "잠실야구장", "intent"?: "route"|"baseball"|"stadium"}}
   응답  {"reply": "...", "sources": [...], "route": "..."}   ← 프론트는 reply 만 읽는다

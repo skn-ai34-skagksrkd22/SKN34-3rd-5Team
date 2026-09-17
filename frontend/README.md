@@ -2,7 +2,7 @@
 
 흰색·파란색, 큰 제목과 야구공 배경을 사용하는 직관 루트 서비스의 프론트 프로토타입입니다. Next.js App Router, React, TypeScript로 구현했습니다.
 
-백엔드 담당자는 API 계약, 환경변수 소유권, 로컬 저장 데이터의 이전 방법을 정리한 [프론트엔드 → 백엔드 연동 인계서](../docs/FRONTEND_BACKEND_HANDOFF.md)를 먼저 확인하세요.
+백엔드 담당자는 API 계약, 환경변수 소유권, 로컬 저장 데이터의 이전 방법을 정리한 [프론트엔드 → 백엔드 연동 인계서](../docs/handoffs/FRONTEND_BACKEND_HANDOFF.md)를 먼저 확인하세요.
 
 ## 실행
 
@@ -39,7 +39,7 @@ UI/UX 가이드의 큰 항목 2~5에 맞춰 여섯 기본 화면, 반응형, 로
 
 코스·좋아요·조회 수는 현재 브라우저의 로컬 저장소에 보관됩니다. 내 코스는 내용을 복사하거나 다른 앱에 보내 공유할 수 있으며, 서버에 공개 게시글로 등록되지는 않습니다. 샘플 코스는 예시이고, 구장 사진은 실제 해당 구장의 사진이 아닌 분위기 이미지입니다. 사진 출처는 `public/images/SOURCES.md`에 있습니다.
 
-경기 일정·선발 투수·팀·개인 순위와 팀·선수 상세는 브라우저가 `/api/tving/`으로 Django에 직접 요청합니다. Django가 TVING 공개 응답을 검증하고 기존 `Team`·`Game`·`StandingHistory`와 선수 관계형 엔티티를 조건부 갱신하며, 실패 시 완전한 저장본만 `stale`로 구분해 반환합니다. Next 서버에는 수집 타이머나 로컬 snapshot writer가 없습니다. 설정과 callable 도구 계약은 [KBO 데이터 안내](docs/KBO_DATA.md)와 [TVING 도구 인계](../docs/TVING_TOOLS_HANDOFF.md)를 참고하세요.
+경기 일정·선발 투수·팀·개인 순위와 팀·선수 상세는 브라우저가 `/api/tving/`으로 Django에 직접 요청합니다. Django가 TVING 공개 응답을 검증하고 기존 `Team`·`Game`·`StandingHistory`와 선수 관계형 엔티티를 조건부 갱신하며, 실패 시 완전한 저장본만 `stale`로 구분해 반환합니다. Next 서버에는 수집 타이머나 로컬 snapshot writer가 없습니다. 설정과 callable 도구 계약은 [KBO 데이터 안내](docs/KBO_DATA.md)와 [TVING 도구 인계](../docs/handoffs/TVING_TOOLS_HANDOFF.md)를 참고하세요.
 
 ## 챗봇
 

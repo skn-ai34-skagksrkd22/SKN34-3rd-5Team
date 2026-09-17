@@ -14,13 +14,17 @@
 디스패처와의 약속: answer(question, history, hint_stadium) -> {"answer","sources","route","places","coursePayload",...}
 """
 import logging
+import json
 import os
 import time
+from contextlib import suppress
 from datetime import date
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableLambda
 
+from ...progress import ProgressCancelled, ProgressStorageError, config_kwargs, current, operation
+from ..domain_tools import visible_text
 from . import tools
 from .prompts import COURSE_HINT, HINT_LINE, NEARBY_HINT, SYSTEM
 
@@ -43,6 +47,13 @@ STADIUM_KO = {"JAMSIL": "잠실야구장", "GOCHEOK": "고척스카이돔", "MUN
 NEARBY_LABEL = {"stay": "숙박", "walk": "산책", "indoor": "실내 놀거리", "store": "편의점"}
 
 _chain = None
+_llm = None
+MAX_TOOL_CALLS = 4
+MAX_ANSWER_LENGTH = 8000
+PLANNER_RULE = (
+    "지금은 답변 작성 단계가 아니라 조회 계획 단계다. 필요한 도구가 있으면 호출하고, "
+    "더 이상 호출할 도구가 없으면 사용자 답변을 작성하지 말고 READY 한 단어만 출력한다."
+)
 
 
 # ── 1. RAG ────────────────────────────────────────────────────────────────────
@@ -65,7 +76,10 @@ def retrieve(inputs: dict, _search=None, _embed=None) -> dict:
     stadium = stadium_for(question, inputs.get("history"), inputs.get("hint"))
     cats = [c for c in detect_categories(question) if c not in ("SCHEDULE", "STANDING")] or None   # 일정·순위는 DB 가 정본
     try:
-        rows = tools.search_documents(question, stadium, cats, k=CONTEXT_K, _search=_search, _embed=_embed)
+        with operation("retrieval", "retrieval", arguments={"stadium": stadium, "categories": cats}):
+            rows = tools.search_documents(question, stadium, cats, k=CONTEXT_K, _search=_search, _embed=_embed)
+    except (ProgressCancelled, ProgressStorageError):
+        raise
     except Exception:
         log.exception("rag retrieve failed")
         rows = []
@@ -99,9 +113,7 @@ def build_prompt(inputs: dict) -> dict:
 
 # ── 4. 파서 ──────────────────────────────────────────────────────────────────
 def _text(content) -> str:
-    if isinstance(content, str):
-        return content
-    return "".join(p.get("text", "") for p in content or [] if isinstance(p, dict))
+    return visible_text(content)
 
 
 def parse_output(result: dict) -> str:
@@ -113,11 +125,115 @@ def parse_output(result: dict) -> str:
 
 
 # ── 3. 에이전트 + 조립 ────────────────────────────────────────────────────────
+def llm():
+    global _llm
+    if _llm is None:
+        from langchain_openai import ChatOpenAI
+        _llm = ChatOpenAI(
+            model=LLM_MODEL, temperature=0, timeout=25, max_retries=0,
+            reasoning_effort="medium", use_responses_api=True,
+        )
+    return _llm
+
+
 def build_chain(model=None, tool_list=None, retriever=None):
-    from langchain_openai import ChatOpenAI
-    model = model or ChatOpenAI(model=LLM_MODEL, temperature=0, timeout=25, max_retries=0, reasoning_effort="none")
+    model = model or llm()
     agent = create_agent(model=model, tools=tool_list if tool_list is not None else tools.build_tools())
     return RunnableLambda(retriever or retrieve) | RunnableLambda(build_prompt) | agent | RunnableLambda(parse_output)
+
+
+def _stream_answer(question, history=None, hint_stadium=None, *, model=None, tool_list=None, retriever=None):
+    """도구 계획은 숨기고 마지막 provider 응답 청크만 즉시 전달한다."""
+    model = model or llm()
+    st = tools.state()
+    t0 = time.perf_counter()
+    prepared = (retriever or retrieve)({
+        "question": question, "history": history or [], "hint": hint_stadium,
+    })
+    messages = build_prompt(prepared)["messages"]
+    exposed_tools = list(tool_list if tool_list is not None else tools.build_tools())
+    allowed = {tool.name: tool for tool in exposed_tools}
+    bound = model.bind_tools(exposed_tools)
+    conversation = list(messages)
+    calls = 0
+    seen_calls = {}
+
+    for _ in range(MAX_TOOL_CALLS + 1):
+        planner = [SystemMessage(content=f"{conversation[0].content}\n\n{PLANNER_RULE}"), *conversation[1:]]
+        response = bound.invoke(planner, **config_kwargs())
+        tool_calls = getattr(response, "tool_calls", None) or []
+        if not tool_calls:
+            break
+        signatures = [json.dumps(
+            [call.get("name"), call.get("args")], ensure_ascii=False, sort_keys=True, default=str,
+        ) for call in tool_calls]
+        new_count = len({signature for signature in signatures if signature not in seen_calls})
+        if not new_count:
+            break
+        if calls + new_count > MAX_TOOL_CALLS:
+            raise ValueError("tool call limit exceeded")
+        conversation.append(response)
+        for call, signature in zip(tool_calls, signatures):
+            name, arguments, call_id = call.get("name"), call.get("args"), call.get("id")
+            if name not in allowed or not isinstance(arguments, dict) or not isinstance(call_id, str) or not call_id:
+                raise ValueError("malformed tool call")
+            if signature in seen_calls:
+                conversation.append(ToolMessage(
+                    content=seen_calls[signature], tool_call_id=call_id, name=name,
+                ))
+                continue
+            output = allowed[name].invoke(call, **config_kwargs())
+            message = output if isinstance(output, ToolMessage) else ToolMessage(
+                content=output if isinstance(output, str) else json.dumps(output, ensure_ascii=False, default=str),
+                tool_call_id=call_id, name=name,
+            )
+            conversation.append(message)
+            seen_calls[signature] = message.content
+        calls += new_count
+    else:
+        raise ValueError("tool call limit exceeded")
+
+    provider_stream, answer, size = None, [], 0
+    try:
+        provider_stream = model.stream(conversation, **config_kwargs())
+        for chunk in provider_stream:
+            collector = current()
+            if collector is not None and collector.cancelled:
+                raise ProgressCancelled("chat progress cancelled")
+            text = _text(getattr(chunk, "content", chunk))
+            if not text:
+                continue
+            size += len(text)
+            if size > MAX_ANSWER_LENGTH:
+                raise ValueError("LLM response too long")
+            answer.append(text)
+            yield text
+    finally:
+        close = getattr(provider_stream, "close", None)
+        if close:
+            with suppress(Exception):
+                close()
+    if not answer:
+        raise ValueError("agent returned no answer")
+    course = st.get("course") or {}
+    out = {
+        "answer": "".join(answer),
+        "sources": st["sources"],
+        "route": "agent:rag" + ("," + ",".join(dict.fromkeys(st["tools"])) if st["tools"] else ""),
+        "timing": {"agent_ms": round((time.perf_counter() - t0) * 1000), "tool_calls": calls},
+    }
+    for key in ("places", "coursePayload", "stadiumCode", "travel"):
+        if course.get(key):
+            out[key] = course[key]
+    return out
+
+
+def stream_answer(question, history=None, hint_stadium=None, *, model=None, tool_list=None, retriever=None):
+    with tools.request_state(hint_stadium, question, history):
+        return (yield from _stream_answer(
+            question, history=history, hint_stadium=hint_stadium,
+            model=model, tool_list=tool_list, retriever=retriever,
+        ))
 
 
 def chain():
@@ -128,11 +244,18 @@ def chain():
 
 
 def _answer(question, history=None, hint_stadium=None, _chain_obj=None):
+    if _chain_obj is None:
+        stream = _stream_answer(question, history=history, hint_stadium=hint_stadium)
+        while True:
+            try:
+                next(stream)
+            except StopIteration as done:
+                return done.value
     st = tools.state()
     t0 = time.perf_counter()
-    text = (_chain_obj or chain()).invoke(
+    text = _chain_obj.invoke(
         {"question": question, "history": history or [], "hint": hint_stadium},
-        config={"recursion_limit": RECURSION_LIMIT},
+        **config_kwargs(recursion_limit=RECURSION_LIMIT),
     )
     course = st.get("course") or {}
     if course.get("places"):

@@ -126,6 +126,13 @@
 .course-card-share p { font-size: 12px; margin: 8px 0; color: #52647e; }
 .course-card-share textarea { width: 100%; font-size: 12px; }
 
+.route-browse-grid { gap: 24px; margin-top: 8px; }
+.route-browse-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 300px; padding: 32px; border: 1px solid #e8edf4; border-radius: 16px; background: #fff; color: #7c8da4; text-align: center; }
+.route-browse-empty h2 { color: #354865; font-size: 20px; }
+.route-browse-empty p { font-size: 13px; }
+.route-browse-empty > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
+@media (max-width: 767px) { .route-browse-grid { gap: 18px; } .route-browse-empty { min-height: 260px; padding: 24px; } }
+
 .route-detail-course-cover::after { display: none; }
 .route-detail-course-cover .route-thumbnail-map img { object-fit: initial; object-position: initial; }
 

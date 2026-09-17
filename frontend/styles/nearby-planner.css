@@ -1,6 +1,7 @@
 .writer-layout { grid-template-areas: "planner planner" "writing chat"; }
 .writer-planner-panel { grid-area: planner; min-width: 0; }
 .planner-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.planner-heading-row > div:first-child { flex: 1; min-width: 0; }
 .planner-heading-row .writer-section-title { margin-bottom: 8px; }
 .planner-heading-row p { color: #758297; margin: 0; font-size: 13px; line-height: 1.8; }
 .planner-mode-heading { min-width: 0; }
@@ -88,6 +89,11 @@
 .planner-route-list { padding: 21px 17px; }
 .planner-route-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #4b607e; }
 .planner-route-heading span { font-size: 10px; color: #8296b4; }
+.planner-route-heading-side { display: inline-flex; align-items: center; gap: 8px; }
+.planner-history { display: inline-flex; gap: 4px; }
+.planner-history button { width: 24px; height: 24px; padding: 0; border: 1px solid #e8edf5; border-radius: 6px; background: white; color: #4b607e; font-size: 14px; line-height: 1; cursor: pointer; }
+.planner-history button:hover:not(:disabled) { background: #edf4ff; }
+.planner-history button:disabled { color: #cbd4e2; cursor: default; }
 .planner-route-list ol { list-style: none; margin: 15px 0 0; padding: 0; }
 .planner-route-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 9px; padding: 15px 0 10px; border-bottom: 1px solid #edf1f7; }
 .planner-stop-number { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #eaf2ff; color: #3771d5; font-size: 11px; font-weight: 700; }
@@ -203,7 +209,7 @@
   .writer-layout { grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "planner chat" "writing chat"; gap: 24px; }
   .writer-chat-panel { top: 92px; height: clamp(540px, calc(100dvh - 120px), 820px); }
   .writer-planner-panel { padding: 20px; }
-  .planner-heading-row { gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .planner-heading-row { gap: 16px; margin-bottom: 18px; }
   .planner-stadium-field { min-width: 200px; }
 }
 @media (min-width: 1600px) {
@@ -217,3 +223,13 @@
 .planner-fit-course:disabled { opacity: .5; cursor: default; }
 .planner-fit-course:focus-visible { outline: 2px solid #246bf3; outline-offset: 3px; }
 @media (max-width: 767px) { .planner-map-view-actions { top: 10px; left: 10px; } }
+
+/* 사용 가이드: 눌러야 하는 출발점 (점선) */
+.planner-guide-origin { position: relative; display: grid; place-items: center; width: 56px; height: 56px; padding: 0; border: 3px dashed #2465ec; border-radius: 50%; background: #2465ec1f; cursor: pointer; animation: planner-guide-pulse 1.6s ease-in-out infinite; }
+.planner-guide-origin::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #2465ec; box-shadow: 0 0 0 3px #fff; }
+.planner-guide-origin span { position: absolute; top: -26px; left: 50%; transform: translateX(-50%); padding: 3px 8px; border-radius: 999px; background: #2465ec; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.planner-guide-origin:hover, .planner-guide-origin:focus-visible { background: #2465ec33; outline: none; }
+/* 가이드 중 지도 영역이 다시 렌더링되면 driver.js의 강조 클래스가 지워지므로, 출발점 표시는 항상 누를 수 있게 둔다 */
+.driver-active .planner-guide-origin, .driver-active .planner-guide-origin * { pointer-events: auto; }
+@keyframes planner-guide-pulse { 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .planner-guide-origin { animation: none; } }

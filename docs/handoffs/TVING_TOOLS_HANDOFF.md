@@ -73,4 +73,4 @@ python manage.py backfill_tving_snapshots
 - 실제 월: 108경기, ready 26일, empty 4일. LG 상세: roster 20/14/10/5명, 투수·타자 각 7 group. 선수 67119: 시즌 8개, 통산 9행.
 - LG Team 승격 뒤 CSV replay에서 `Team.tving_skipped=1`, 9월 전체 승격 후 `Game.tving_skipped=108`.
 
-테스트 명령과 전체 통합 결과는 `docs/PROVIDER_INTEGRATION_REPORT.md`에 있습니다. LLM 등록·prompt·RAG 변경과 autonomous 전체 선수 backfill은 범위 밖입니다.
+테스트 명령과 전체 통합 결과는 `docs/handoffs/PROVIDER_INTEGRATION_REPORT.md`에 있습니다. LLM 등록·prompt·RAG 변경과 autonomous 전체 선수 backfill은 범위 밖입니다.

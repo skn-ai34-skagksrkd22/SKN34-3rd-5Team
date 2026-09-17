@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../lib/drawn-course.ts", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } });
-const { coursePointLabel, renumberMapPoints, undoDrawnPoint, withCourseStart } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
+const { coursePointLabel, renumberMapPoints, undoDrawnPoint, withCourseStart, withUntrackedPoints } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 const point = (id) => ({ placeId: id, name: "", category: "직접 지정", lat: 37.51, lng: 127.07, isMapPoint: true });
 const cafe = { placeId: "cafe", name: "동네 카페", category: "카페", lat: 37.515, lng: 127.073 };
 
@@ -43,6 +43,19 @@ test("right-click undo removes one newest point at a time, including the lone st
     assert.deepEqual(state.history, expected);
   }
   assert.equal(undoDrawnPoint(state.stops, state.history).removed, undefined);
+});
+
+test("points added outside the planner are undone newest-first after the recorded ones", () => {
+  const drawn = (id) => ({ visitId: id, name: id, category: "먹거리", lat: 37.51, lng: 127.07, isDrawnPoint: true });
+  const stops = [drawn("chat-1"), drawn("chat-2"), cafe, drawn("chat-3")];
+  let history = withUntrackedPoints(stops, []);
+  assert.deepEqual(history, ["chat-1", "chat-2", "chat-3"]);
+  let state = undoDrawnPoint(stops, history);
+  assert.equal(state.removed.visitId, "chat-3");
+  state = undoDrawnPoint(state.stops, withUntrackedPoints(state.stops, state.history));
+  assert.equal(state.removed.visitId, "chat-2");
+  assert.deepEqual(withUntrackedPoints(state.stops, ["chat-1"]), ["chat-1"]);
+  assert.deepEqual(withUntrackedPoints([cafe], ["gone"]), ["gone"]);
 });
 
 test("undo follows creation order after reordering and skips already deleted points", () => {

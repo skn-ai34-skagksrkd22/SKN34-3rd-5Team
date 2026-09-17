@@ -110,3 +110,46 @@ function EmailChangeButton({ user, onChanged }: { user: MemberUser; onChanged: (
     </dialog>, document.body)}
   </>;
 }
+
+const NICKNAME_PATTERN = /^[A-Za-z가-힣]{1,12}$/;
+
+// Nickname lives outside the profile form: Enter never saves it, and a change needs an explicit confirmation.
+export function NicknameChangeButton({ nickname, locked, onSave }: { nickname: string; locked: boolean; onSave: (nickname: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { if (open && !dialog.current?.open) dialog.current?.showModal(); }, [open]);
+  const start = () => { if (locked) return; setValue(nickname); setMessage(""); setOpen(true); };
+  async function confirm() {
+    if (busy) return;
+    const next = value.trim();
+    if (!NICKNAME_PATTERN.test(next)) { setMessage("닉네임은 한글·영문만 1~12자로 입력해 주세요."); return; }
+    if (next === nickname) { setMessage("현재 닉네임과 같아요."); return; }
+    setBusy(true); setMessage("");
+    try { await onSave(next); setOpen(false); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "닉네임을 변경하지 못했어요."); }
+    finally { setBusy(false); }
+  }
+  return <>
+    <div className={styles.passwordRow}>
+      <span>닉네임</span>
+      <button type="button" className={styles.nicknameBox} disabled={locked} onClick={start} aria-label={`닉네임 ${nickname} 변경하기`}>{nickname}</button>
+      <button type="button" className="button button-secondary" disabled={locked} onClick={start}>변경</button>
+    </div>
+    {open && createPortal(<dialog ref={dialog} className={`auth-dialog ${styles.passwordDialog}`} onCancel={event => { if (busy) event.preventDefault(); else setOpen(false); }} onClose={() => { if (!busy) setOpen(false); }} aria-labelledby="nickname-dialog-title" aria-describedby="nickname-dialog-question">
+      <div className="auth-dialog-heading"><h2 id="nickname-dialog-title">닉네임 변경</h2><button type="button" disabled={busy} onClick={() => setOpen(false)} aria-label="닉네임 변경 닫기">×</button></div>
+      <form onSubmit={event => { event.preventDefault(); event.stopPropagation(); }}>
+        <label>새 닉네임<input name="newNickname" value={value} maxLength={12} autoComplete="nickname" disabled={busy} onChange={event => { setValue(event.target.value); setMessage(""); }} onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }} /></label>
+        <p className={styles.settingNote}>한글·영문만 최대 12자. 변경 후 6개월 동안 다시 바꿀 수 없어요.</p>
+        <p id="nickname-dialog-question"><strong>닉네임을 변경하시겠습니까?</strong></p>
+        <div className={styles.dialogActions}>
+          <button type="button" className="button button-secondary" disabled={busy} onClick={() => setOpen(false)}>취소</button>
+          <button type="button" className="button button-primary" disabled={busy} onClick={() => void confirm()}>{busy ? "변경 중…" : "확인"}</button>
+        </div>
+        {message && <p role="status">{message}</p>}
+      </form>
+    </dialog>, document.body)}
+  </>;
+}

@@ -210,24 +210,37 @@ def get_standings(as_of=None, _service_obj=None) -> str:
 
 
 class PricesInput(BaseModel):
-    team: str = Field(description="홈 구단 이름 (좌석 가격은 홈 구단 기준)")
+    team: str | None = Field(default=None, description="홈 구단 이름. 팀을 모르면 비운다")
+    stadium: str | None = Field(default=None, description="구장 이름. 팀을 모를 때 사용한다")
     zone_keyword: str | None = Field(default=None, description="좌석 이름 일부 (예: 테이블, 외야, 1루). 모르면 비운다")
     cheapest_first: bool = Field(default=True, description="싼 순서로 정렬")
     limit: int = Field(default=15, description="보여줄 행 수 (1~30)")
 
 
-def get_ticket_prices(team, zone_keyword=None, cheapest_first=True, limit=15, _service_obj=None) -> str:
+def get_ticket_prices(team=None, stadium=None, zone_keyword=None, cheapest_first=True, limit=15, _service_obj=None) -> str:
     """구단 홈구장의 좌석 구역별 티켓 가격을 야구 DB 에서 찾는다 (요일·권종별)."""
-    code = team_code(team)
-    if not code:
+    code = team_code(team) if team else None
+    stadium_code = to_stadium_code(stadium) if stadium else None
+    if team and not code:
         return f"'{team}' 팀을 찾지 못했어요."
-    conds, params = ["t.team_code = %(team)s"], {"team": code}
+    if stadium and not stadium_code:
+        return f"'{stadium}' 구장을 찾지 못했어요."
+    if not code and not stadium_code:
+        return "구단이나 구장을 알려 주세요."
+    conds, params = [], {}
+    if code:
+        conds.append("t.team_code = %(team)s")
+        params["team"] = code
+    if stadium_code:
+        conds.append("s.stadium_code = %(stadium)s")
+        params["stadium"] = stadium_code
     if zone_keyword:
         conds.append("sz.zone_name_ko ILIKE %(zone)s")
         params["zone"] = f"%{zone_keyword.strip()}%"
-    sql = ('SELECT sz.zone_name_ko, tp.day_type, tp.customer_type, tp.price_tier, tp.price_krw, tp.discount_condition '
+    sql = ('SELECT t.team_name_ko, sz.zone_name_ko, tp.day_type, tp.customer_type, tp.price_tier, tp.price_krw, tp.discount_condition '
            'FROM "TICKET_PRICE" tp JOIN "SEAT_ZONE" sz ON sz.id = tp.seat_zone_id '
            'JOIN "HOME_CONTEXT" hc ON hc.id = sz.home_context_id JOIN "TEAM" t ON t.id = hc.team_id '
+           'JOIN "STADIUM" s ON s.id = hc.stadium_id '
            'WHERE ' + " AND ".join(conds) +
            (" ORDER BY tp.price_krw, sz.zone_name_ko" if cheapest_first else " ORDER BY sz.zone_name_ko, tp.price_krw"))
     result = _run_fixed("prices", sql, params, _service_obj)

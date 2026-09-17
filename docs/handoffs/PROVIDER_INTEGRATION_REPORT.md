@@ -6,9 +6,9 @@
 
 통합 직전 부모 변경 전체를 파일별 SHA-256으로 출력해 터미널 기록에 남겼습니다. 주요 부모 보존 hash는 `backend/tving/service.py=4d09e803...`, `frontend/components/game-schedule.tsx=5cf06671...`, `backend/config/settings.py=25b628b3...`였습니다.
 
-- KMA 인계: `docs/WEATHER_TOOL_HANDOFF.md` source SHA `329cd2cb...`; 10개 비공유 파일은 source와 SHA 일치, `game-schedule.tsx`는 TVING URL을 보존하고 source label 한 줄만 결합.
-- Routing 인계: `docs/EXTERNAL_TRAVEL_TOOLS_HANDOFF.md`; 17개 non-shared 파일을 manifest와 대조해 복사하고 URL/settings/Compose는 수동 합성.
-- Tour 인계: `docs/TOURISM_TOOLS_HANDOFF.md` SHA `9d281652...`; Place-backed 최종 파일만 복사. 이전 중복 관광 master draft는 통합하지 않음.
+- KMA 인계: `docs/handoffs/WEATHER_TOOL_HANDOFF.md` source SHA `329cd2cb...`; 10개 비공유 파일은 source와 SHA 일치, `game-schedule.tsx`는 TVING URL을 보존하고 source label 한 줄만 결합.
+- Routing 인계: `docs/handoffs/EXTERNAL_TRAVEL_TOOLS_HANDOFF.md`; 17개 non-shared 파일을 manifest와 대조해 복사하고 URL/settings/Compose는 수동 합성.
+- Tour 인계: `docs/handoffs/TOURISM_TOOLS_HANDOFF.md` SHA `9d281652...`; Place-backed 최종 파일만 복사. 이전 중복 관광 master draft는 통합하지 않음.
 - Place 재사용: local `develop ae09080`의 `0006_place.py` SHA `65fc787f...`와 service/serializer/view/tests를 사용. `Place.phone` model은 transition migration에 맞춰 120, 기존 Kakao HTTP serializer는 50 유지.
 
 ## 최종 데이터 소유권

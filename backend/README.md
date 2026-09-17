@@ -1,130 +1,126 @@
+# 백엔드 구성 안내
 
-# 백엔드 환경 (Django)
+KBO 직관 가이드의 Django REST API입니다. 회원 인증, 채팅·RAG, 야구 데이터, 직관 코스, 커뮤니티, TVING 데이터 조회를 **6개 앱**으로 나눕니다. 이 문서는 앱의 역할과 연결 관계를 안내하며, 요청·응답과 오류 등 API 상세는 각 앱 README에서 설명합니다.
 
-백엔드·크롤링·전처리의 Python 의존성은 `backend/requirements.txt`로 관리합니다.
-모든 명령은 프로젝트 루트 기준입니다.
+[프로젝트 README](../README.md) · [OpenAPI 계약](../contracts/openapi.yaml) · [Postman 컬렉션](../docs/postman/)
+
+## 앱별 역할과 API 문서
+
+| 앱 | 주요 기능 | 담당 데이터·처리 | Django 직접 호출 경로 | 상세 문서 |
+| --- | --- | --- | --- | --- |
+| `accounts` | 회원가입·로그인, JWT 갱신·로그아웃, 계정 복구·정보 변경, 관리자 회원 관리 | 사용자와 권한, 이메일 인증, refresh 폐기 | `/auth/…` | [인증·회원 API](../docs/api/accounts.md) |
+| `llm` | 회원·게스트 채팅, 답변 스트리밍, 대화 기록, 답변 중단·확정, RAG·도구 호출 | 채팅방·메시지·턴, 문서 검색과 도메인 에이전트 | `/chat/…` | [채팅 API](../docs/api/llm.md) |
+| `baseball` | 구단·구장·경기·순위·티켓 등 조회, 관리자 야구 데이터 CRUD, 안전한 SQL 조회 서비스 | 야구 도메인 모델, CSV 적재, 읽기 전용 DB 조회 | `/baseball/…`, `/baseball/manage/…` | [야구 데이터 API](../docs/api/baseball.md) |
+| `travel` | 직관 코스 CRUD·반응·조회수, 장소 검색·관리, 길찾기, 구장 날씨, 관광 검색 | 코스·방문 장소, 외부 데이터 스냅샷, 지도·기상·관광 서비스 | `/courses/…`, `/places/…`, `/travel/directions/`, `/weather/`, `/tourism/` | [코스·장소·외부 정보 API](../docs/api/travel.md) |
+| `community` | 게시글·댓글, 추천·신고, 임시저장·게시, 이미지, 승부 예측 | 게시글·초안·이미지 연결, revision 충돌 및 게시 재시도 처리 | `/community/…` | [커뮤니티 API](../docs/api/community.md) |
+| `tving` | 일별·월별 경기 정보, 구단·선수 상세, 엔티티·스냅샷 관리 | TVING 응답 조회·저장과 관계형 데이터 반영 | `/tving/…` | [TVING 데이터 API](../docs/api/tving.md) |
+
+앱 등록은 [config/settings.py](config/settings.py), 실제 공개 URL은 [config/urls.py](config/urls.py)를 기준으로 합니다. 폴더에 서비스 함수나 View가 있다고 해서 모두 HTTP API로 노출되는 것은 아닙니다.
+
+## 디렉터리 구분
+
+```text
+backend/
+├── config/          # 프로젝트 설정, 최상위 URL, WSGI/ASGI
+├── accounts/        # 회원·인증
+├── llm/             # 채팅 API·기록·RAG·도구
+│   └── rag/         # 질문 분류와 도메인별 답변 파이프라인
+├── baseball/        # 야구 데이터 모델·조회·관리
+├── travel/          # 코스·장소·길찾기·날씨·관광
+├── community/       # 게시판·초안·이미지·승부 예측
+├── tving/           # TVING 데이터 서비스
+├── crawling/        # 데이터 수집 스크립트 (Django 앱 아님)
+├── preprocessing/   # 데이터 전처리 스크립트 (Django 앱 아님)
+├── manage.py
+└── requirements.txt
+```
+
+`config`는 업무 앱이 아닌 프로젝트 설정 패키지입니다. 수집·전처리와 RAG 내부 구성은 기존 문서를 참고합니다.
+
+- [수집 스크립트](crawling/README.md)
+- [전처리 스크립트](preprocessing/README.md)
+- [RAG 파이프라인](llm/rag/README.md)
+
+## 앱 간 연결
+
+- **회원·권한:** `accounts`의 사용자 모델과 JWT를 다른 앱에서 공유합니다. 공개 조회, 로그인 필수, 작성자 전용, 관리자 전용 정책은 엔드포인트별로 다릅니다.
+- **채팅:** `llm`이 질문에 따라 RAG 문서를 검색하거나 야구 조회·코스·장소 등 도메인 서비스를 도구로 호출합니다. 모든 처리가 앱 간 HTTP 호출로 이루어지는 것은 아닙니다.
+- **야구 데이터:** `baseball`이 야구 모델과 조회 서비스를 제공하고, `tving`은 외부 경기·팀·선수 데이터 조회 및 스냅샷·관계형 반영을 담당합니다.
+- **직관 코스:** `travel`의 코스·장소 기능은 일반 API와 챗봇 도구에서 사용합니다. 카카오·기상청·관광 API 등 외부 서비스 설정이 기능별로 필요합니다.
+- **커뮤니티:** 게시글·초안은 DB에, 이미지 파일은 S3 호환 private bucket에 저장합니다. 이미지 읽기는 Django를 거치며 미게시 이미지에는 소유권 검사를 적용합니다.
+
+## API 공통 읽는 법
+
+| 항목 | 규칙 |
+| --- | --- |
+| Django 직접 호출 | 기본 개발 주소 `http://127.0.0.1:8000`; 예: `/auth/signin` |
+| Nginx 경유 | 기본 개발 주소 `http://localhost`; 예: `/api/auth/signin` |
+| 경로 변환 | Nginx가 `/api/` 접두어를 제거해 Django에 전달합니다. [프록시 설정](../nginx/nginx.conf) 참고 |
+| 인증 | 필요한 API에 `Authorization: Bearer <access_token>` 전달 |
+| 요청 형식 | 일반적으로 JSON. 이미지 업로드는 multipart, 채팅 스트리밍 응답은 SSE |
+| 끝 슬래시 | URL마다 다릅니다. `/auth/signin`과 `/auth/signup/`처럼 문서의 경로를 그대로 사용합니다 |
+| 응답·오류 | 앱별 형식이 다릅니다. 모든 API가 같은 래퍼·페이지네이션·오류 구조를 쓴다고 가정하지 않습니다 |
+| OpenAPI | Django `GET /schema/`, Nginx `GET /api/schema/`; 저장된 계약은 [contracts/openapi.yaml](../contracts/openapi.yaml) |
+
+JWT access 수명은 5분, refresh 수명은 1일이며 refresh rotation은 사용하지 않습니다. 로그아웃은 제출한 refresh만 폐기하고 기존 access를 즉시 폐기하지 않습니다. 비밀번호 변경·재설정 시 토큰의 비밀번호 해시 검증이 적용됩니다. 상세 계약은 [accounts README](../docs/api/accounts.md)를 참고합니다.
+
+## 개발 환경과 실행
+
+모든 명령은 **프로젝트 루트** 기준입니다. Python 의존성은 [requirements.txt](requirements.txt)에서 관리합니다. DB는 PostgreSQL/pgvector를 사용합니다.
+
+### 로컬 Python 실행
 
 ```bash
+# 환경이 없을 때 한 번 생성
+conda create -n skn34-backend python=3.12
 conda activate skn34-backend
 python -m pip install -r backend/requirements.txt
 python -m django --version
 ```
 
-환경이 없으면 먼저 `conda create -n skn34-backend python=3.12`로 생성합니다.
-Django API와 PostgreSQL/pgvector 모델이 구현되어 있습니다. DB 접속값은 환경변수와
-`backend/.env`에서 읽으며, 컨테이너 내부에서는 `DB_HOST=db`, 로컬 Docker DB에
-호스트에서 접속할 때는 `DB_HOST=127.0.0.1`을 사용합니다.
+[환경변수 예시](../.env.example)를 참고해 로컬 환경을 준비합니다. 설정은 프로세스 환경변수를 우선하며 `backend/.env`, 루트 `.env` 순서로 누락값을 읽습니다. 실제 비밀값은 문서·Git·로그에 남기지 않습니다.
 
-## 인증 API
+| 설정 영역 | 주요 변수·주의사항 |
+| --- | --- |
+| DB | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`; Compose 내부는 `DB_HOST=db`, 호스트에서 로컬 Docker DB로 접속하면 `127.0.0.1` |
+| 야구 읽기 전용 조회 | `BASEBALL_DB_USER`, `BASEBALL_DB_PASSWORD`; 일반 DB 계정과 분리 |
+| 채팅·RAG | `OPENAI_API_KEY`, `LLM_MODEL`, `EMBEDDING_MODEL`, `CHAT_CHECKPOINT_SIGNING_KEY` |
+| 외부 정보 | `KAKAO_REST_API_KEY`, `KMA_SERVICE_KEY` 또는 `KMA_API_KEY`, `TOUR_API_KEY`; 각 서비스의 상세 조건은 travel 문서 참고 |
+| 이메일 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL`, `AUTH_FRONTEND_ORIGIN` |
+| 이미지 | `COMMUNITY_IMAGE_S3_*`; Compose에서는 `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`를 연결 |
 
-| 기능 | Django 직접 호출 | Nginx 경유 |
-|---|---|---|
-| 회원가입 | `POST /auth/signup/` | `POST /api/auth/signup/` |
-| 로그인 | `POST /auth/signin` | `POST /api/auth/signin` |
-| 토큰 갱신 | `POST /auth/token/refresh/` | `POST /api/auth/token/refresh/` |
-| 사용자 조회 | `GET /auth/user` | `GET /api/auth/user` |
-| 로그아웃 | `POST /auth/logout` | `POST /api/auth/logout` |
-| 비밀번호 변경·재설정 | `POST /auth/password` | `POST /api/auth/password` |
-| 재설정 메일 요청 | `POST /auth/password/request` | `POST /api/auth/password/request` |
-
-로그인은 `access`와 `refresh`를 반환합니다. 사용자 조회에는
-`Authorization: Bearer <access>`가 필요하며, 성공하면 `id`, `username`, `email`을
-반환합니다. 토큰 미전달은 `401 {"detail":"인증이 필요합니다."}`, 잘못되거나 만료된
-토큰은 JWT 검증 오류와 함께 `401`을 반환합니다.
-
-### 로그아웃 계약
-
-```http
-POST /api/auth/logout
-Content-Type: application/json
-
-{"refresh":"<로그인에서 발급받은 refresh>"}
-```
-
-- 성공 응답은 `200 {}`입니다. 기존의 본문 없는 요청은 더 이상 지원하지 않습니다.
-- refresh 누락·빈 값·객체/배열 등 잘못된 본문 형식은 `400`입니다.
-- 위조·만료·이미 폐기된 refresh 또는 access token 제출은 `401`입니다. 반복 요청도 `401`입니다.
-- Authorization 헤더는 필요하지 않으며, 잘못되거나 만료된 access 헤더가 있어도 본문의 refresh를 검증합니다.
-- 제출한 refresh만 폐기합니다. 같은 사용자라도 다른 로그인에서 발급한 토큰은 유지합니다.
-- 이미 발급한 access는 남은 유효기간(최대 5분) 동안 유효합니다. refresh 유효기간은 1일이며 rotation은 사용하지 않습니다.
-- 클라이언트는 로그아웃 처리 후 저장한 access·refresh와 로그인 상태를 삭제해야 합니다. 요청 실패 시에는 서버 폐기 성공을 단정하지 않습니다.
-- 비밀번호 변경·재설정 시 기존 access와 refresh를 거부하는 비밀번호 해시 검증은 유지합니다.
-
-프론트 인증 화면과 토큰 저장·삭제는 아직 구현되어 있지 않습니다.
-
-### 마이그레이션과 만료 토큰 정리
-
-Simple JWT의 기본 blacklist 앱과 migration을 사용합니다. API 실행 전에 적용합니다.
+DB와 필요한 외부 서비스가 준비된 개발 환경에서 실행합니다.
 
 ```bash
 python backend/manage.py migrate
+python backend/manage.py check
+python backend/manage.py runserver 0.0.0.0:8000
 ```
 
-Compose는 백엔드 시작 전에 `migrate`를 실행합니다. 기존 로그인에서 발급한 유효한
-refresh도 로그아웃 시 blacklist에 등록됩니다. 토큰 원문은 로그나 공유 문서에 남기지 않습니다.
+마이그레이션은 스키마 준비이며 야구 데이터 적재나 RAG 인덱스 생성을 대신하지 않습니다. 데이터 준비는 각 앱 문서와 [전체 실행 안내](../README.md#12-실행-방법)를 참고합니다.
 
-운영 스케줄러에서 다음 명령을 **하루 한 번** 실행하여 만료된 outstanding·blacklist
-레코드를 정리합니다. 이 저장소는 스케줄러를 자동 설치하지 않습니다.
+### Docker Compose
 
-```bash
-docker compose exec -T backend python manage.py flushexpiredtokens
-```
+[Compose 설정](../docker-compose.yml)은 백엔드 시작 시 `migrate` → `provision_baseball_reader --prepare-db-permissions` → `runserver`를 실행합니다. PostgreSQL, MinIO, 메일 설정 및 필수 환경변수를 먼저 준비해야 합니다. 전체 서비스 실행 절차는 [루트 README](../README.md#12-실행-방법)에 있습니다.
 
-### 회귀 테스트
+현재 Compose는 개발용 `runserver`를 사용합니다. 이 실행 예시 자체를 운영 보안·배포 구성이 완료되었다는 의미로 해석하지 않습니다.
 
-별도 PostgreSQL/pgvector 테스트 DB를 생성할 수 있는 테스트 전용 접속값을 사용합니다.
-아래 명령은 `test_<DB_NAME>` DB를 생성·삭제합니다. 운영 DB 계정으로 실행하지 않습니다.
+## 운영·검증 참고
 
-```bash
-python backend/manage.py test accounts.test.test_logout accounts.test.test_tokens accounts.test.tests --noinput
-```
+- **만료 JWT 정리:** 운영 스케줄러에서 아래 명령을 하루 한 번 실행하도록 별도 설정합니다. 저장소가 스케줄러를 자동 설치하지는 않습니다.
 
-실제 로그인 JWT로 로그아웃·갱신 거부·5분 access 수명·다른 로그인 유지·입력 검증과
-기존 비밀번호 변경·재설정을 검증합니다. CI의 `manage.py check`는 API 테스트를 대신하지 않습니다.
+  ```bash
+  docker compose exec -T backend python manage.py flushexpiredtokens
+  ```
 
-[Postman 컬렉션](../docs/postman/auth.postman_collection.json)을 가져와 `01 자동 회귀`만
-실행합니다. `base_url`은 Django 직접 호출 시 `http://127.0.0.1:8000`, Nginx 경유 시
-`http://localhost/api`이며 끝에 `/`를 붙이지 않습니다. 테스트 계정은 DB에 남으므로
-테스트 전용 환경에서 실행하고, 실행 후 저장된 토큰은 지우고 공유합니다.
+- **API 테스트:** DB 테스트는 별도 테스트 DB를 생성·삭제할 수 있습니다. 운영 DB 계정이 아닌 테스트 전용 설정으로 실행합니다. 인증 회귀 테스트 예시는 다음과 같습니다.
 
-[전체 실행 안내](../README.md) · [VS Code 설정](../docs/환경설정_my_venv.md)
+  ```bash
+  python backend/manage.py test accounts.test.test_logout accounts.test.test_tokens accounts.test.tests --noinput
+  ```
 
-## 커뮤니티 임시저장·게시 API
+- **Postman:** [인증 컬렉션](../docs/postman/auth.postman_collection.json)의 `base_url`은 직접 호출 시 `http://127.0.0.1:8000`, Nginx 경유 시 `http://localhost/api`입니다. 끝에 `/`를 붙이지 않습니다. `01 자동 회귀` 실행은 테스트 계정을 남길 수 있으므로 테스트 전용 환경을 사용하고 저장된 토큰을 공유하지 않습니다.
+- **이미지 보존:** 미연결 이미지 자동 정리 명령은 구현되어 있지 않습니다. 파일을 임의로 삭제하면 초안·게시글 연결이 손상될 수 있습니다.
+- **문서 범위:** 앱 README는 현재 코드의 계약을 설명합니다. `manage.py check` 통과나 문서 작성만으로 실제 DB·외부 API·LLM 통합 테스트 통과를 의미하지 않습니다.
 
-모든 임시저장 API는 JWT가 필요하고 본인 소유의 미게시 초안만 조회합니다. `PATCH`는
-현재 `revision`과 선택적인 `imageIds`(최대 10개)를 받으며, 다른 초안·게시글에 연결된
-이미지는 가져올 수 없습니다. revision 충돌은 `409`입니다.
-
-| 기능 | Django 직접 호출 | Nginx 경유 |
-|---|---|---|
-| 목록·생성 | `GET\|POST /community/drafts/` | `GET\|POST /api/community/drafts/` |
-| 조회·수정·삭제 | `GET\|PATCH\|DELETE /community/drafts/<uuid>/` | `GET\|PATCH\|DELETE /api/community/drafts/<uuid>/` |
-| 게시 | `POST /community/drafts/<uuid>/publish/` | `POST /api/community/drafts/<uuid>/publish/` |
-
-게시는 본문 `{"revision": <현재 revision>}`과 1~128자 `Idempotency-Key` 헤더가
-필수입니다. 게시글 검증과 이미지 이동은 한 트랜잭션에서 수행하며, 같은 키·revision·
-내용의 성공 재시도는 기존 게시글을 `200`으로 반환합니다. 키·revision·내용이 달라진
-재시도는 `409`이고, 실패한 초안은 삭제하거나 비우지 않습니다. 성공한 초안은 일반
-임시저장 조회·수정·삭제에서 `404`로 숨깁니다.
-게시글을 삭제하면 소비된 초안도 함께 삭제되어 같은 내용을 다시 게시할 수 없습니다.
-
-## 커뮤니티 이미지 API
-
-Compose의 `minio` 서비스는 이미지를 private bucket에 저장하고 Django만 파일을
-읽습니다. `.env.example`의 `MINIO_ROOT_PASSWORD` placeholder를 로컬 전용 비밀값으로
-교체한 뒤 사용합니다. 업로드는 JWT와 multipart `image` 필드가 필요합니다.
-
-| 기능 | Django 직접 호출 | Nginx 경유 |
-|---|---|---|
-| 업로드 | `POST /community/images/` | `POST /api/community/images/` |
-| 읽기 | `GET /community/images/<uuid>/` | `GET /api/community/images/<uuid>/` |
-| 삭제 | `DELETE /community/images/<uuid>/` | `DELETE /api/community/images/<uuid>/` |
-
-JPEG, PNG, WebP 정지 이미지만 허용하며 입력·정규화 결과는 5MiB 이하, 해상도는
-2천만 픽셀 이하입니다. 서버가 다시 인코딩해 EXIF를 제거합니다. 연결되지 않은
-이미지와 draft 이미지는 소유자만 읽을 수 있고, 게시글에 연결된 이미지는 공개되며
-삭제 요청은 `409`입니다.
-
-오래된 미연결 이미지 자동 정리는 이번 범위에서 제외했습니다. 안전한 draft/post
-연결과 보존 기간 정책이 확정되면, DB 행을 잠근 뒤 여전히 미연결·기한 초과인지
-재검사하는 dry-run 기본 관리 명령으로 추가해야 합니다.
+[VS Code 환경 안내](../docs/guides/환경설정_my_venv.md)

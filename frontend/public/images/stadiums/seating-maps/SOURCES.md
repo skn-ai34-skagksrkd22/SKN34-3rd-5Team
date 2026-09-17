@@ -14,4 +14,4 @@
 | `munhak.png` | 인천 SSG 랜더스필드 | 2583×2371 | [SSG 랜더스 2026 입장권 안내](https://www.ssglanders.com/game/ticket) / [PNG 원본](https://www.ssglanders.com/img/game/seat_2026_zoom.png) |
 | `suwon.jpg` | 수원 KT 위즈 파크 | 4290×9679 | [KT 위즈파크 입장 및 좌석 안내](https://www.ktwiz.co.kr/wizpark/guide) / [JPG 원본](https://wizzap.ktwiz.co.kr/files/resource/2026/03/26/20260326181144.bd1-13718dbe0c9d.jpg) |
 
-외부 구단 서버의 이미지 URL을 화면에서 직접 불러오지 않고, 확인한 원본을 프로젝트 내부에서 제공한다. 원본 출처와 확인 연도는 `docs/구장별_공식_좌석배치도_출처조사.md`에도 기록되어 있다.
+외부 구단 서버의 이미지 URL을 화면에서 직접 불러오지 않고, 확인한 원본을 프로젝트 내부에서 제공한다. 원본 출처와 확인 연도는 `docs/references/구장별_공식_좌석배치도_출처조사.md`에도 기록되어 있다.

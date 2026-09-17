@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useChat } from "./chat-provider";
 import { MAX_MESSAGE_LENGTH } from "@/lib/chat/types";
-import { Baseball, Icon } from "./icons";
+import { Baseball, CapBot, Icon } from "./icons";
 import { GameSchedule } from "./game-schedule";
 import { RouteCard } from "./route-card";
 import { RouteCardsSkeleton } from "./route-skeleton";
 import { useRoutes, useRoutesReady } from "@/lib/routes";
+import { useMemberAuth } from "@/lib/member-auth";
 
 const stadiumTeams = [
   { code: "lg", name: "LG 트윈스", stadium: "JAMSIL" },
@@ -25,14 +26,15 @@ const stadiumTeams = [
 ] as const;
 
 const shortcuts = [
-  { icon: "sparkles", title: "루트 만들기", caption: "지도를 보며 직접 만드는 하루", href: "/routes/new" },
-  { icon: "route", title: "루트 둘러보기", caption: "다른 팬들의 하루", href: "/routes" },
+  { icon: "sparkles", image: "/images/icons/route-create.png", title: "루트 만들기", caption: "지도를 보며 직접 만드는 하루", href: "/routes/new" },
+  { icon: "route", image: "/images/icons/route-browse.png", title: "루트 둘러보기", caption: "다른 팬들의 하루", href: "/routes" },
   { icon: "stadium", title: "구장 정보", caption: "가기 전에 알아두기", href: "/stadiums" },
   { icon: "book", title: "야구 가이드", caption: "첫 직관도 자신 있게", href: "/guide" },
 ] as const;
 
 export function HomePage() {
   const { openChat } = useChat();
+  const { status: authStatus } = useMemberAuth();
   const [question, setQuestion] = useState("");
   const routes = useRoutes();
   const ready = useRoutesReady();
@@ -46,14 +48,14 @@ export function HomePage() {
           <h1 id="hero-heading">직관의 하루를, <span>나답게.</span></h1>
           <p className="hero-description">경기 전 맛집부터 경기 후 산책까지.<br />나만의 직관 루트를 만들고, 야구팬들과 함께 나눠보세요.</p>
           <div className="hero-search-row">
-            <form className="hero-search" onSubmit={event => { event.preventDefault(); openChat(question); }}>
+            {authStatus === "anonymous" ? <Link className="hero-search" href="/login"><Icon name="search" size={24} /><span className="hero-login-label">로그인하고 직관 도우미에게 질문하기</span><span className="hero-chat-bot"><CapBot /><span className="hero-chat-ai">AI</span></span></Link> : <form className="hero-search" onSubmit={event => { event.preventDefault(); if (authStatus === "authenticated") openChat(question); }}>
               <Icon name="search" size={24} />
               <label className="sr-only" htmlFor="hero-query">직관 도우미에게 질문하기</label>
               <input id="hero-query" name="q" value={question} onChange={event => setQuestion(event.target.value)} maxLength={MAX_MESSAGE_LENGTH} placeholder="어느 구장으로 떠나볼까요?" />
-              <button type="submit" aria-label="직관 도우미에게 질문하기"><Icon name="arrow" size={22} /></button>
-            </form>
+              <button type="submit" aria-label="직관 도우미에게 질문하기" disabled={authStatus !== "authenticated"} className="hero-chat-bot"><CapBot /><span className="hero-chat-ai">AI</span></button>
+            </form>}
           </div>
-          <div className="hero-shortcuts">{shortcuts.map(shortcut => <Link href={shortcut.href} className="shortcut" key={shortcut.title}><span className="shortcut-icon"><Icon name={shortcut.icon} size={30} /></span><strong>{shortcut.title}</strong><small>{shortcut.caption}</small></Link>)}</div>
+          <div className="hero-shortcuts">{shortcuts.map(shortcut => <Link href={shortcut.href} className="shortcut" key={shortcut.title}>{"image" in shortcut ? <span className="shortcut-icon has-image"><Image src={shortcut.image} alt="" width={96} height={96} /></span> : <span className="shortcut-icon"><Icon name={shortcut.icon} size={30} /></span>}<strong>{shortcut.title}</strong><small>{shortcut.caption}</small></Link>)}</div>
         </div>
       </section>
       <GameSchedule beforeTeamBoards={

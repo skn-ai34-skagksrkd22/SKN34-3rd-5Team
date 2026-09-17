@@ -4,7 +4,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { communityPostCategories } from "./community-post-category";
 import type { CommunityCommentDto, CommunityPostWriteDto, CommunityReportResultDto, CommunityReportWriteDto, CommunityVoteStateDto } from "./api/content";
 import { apiRequest } from "./api/client";
-import { memberFetch } from "./member-auth-request";
+import { memberError, memberFetch } from "./member-auth-request";
+import { richColors, richSizes, type RichContentDoc } from "./community-rich-content";
 import { teamBoards, type TeamCommunityPost } from "./team-community";
 
 type CommunityState = { posts: TeamCommunityPost[]; loading: boolean; error: string };
@@ -42,7 +43,27 @@ function isPost(value: unknown): value is TeamCommunityPost {
     && (post.createdAt === null || typeof post.createdAt === "string")
     && ["views", "recommendations", "commentCount"].every(field => isCount(post[field]))
     && (post.downvotes === undefined || isCount(post.downvotes))
-    && typeof post.isSample === "boolean";
+    && typeof post.isSample === "boolean"
+    && (post.contentDoc === undefined || post.contentDoc === null || isRichDoc(post.contentDoc));
+}
+
+function isRichDoc(value: unknown): value is RichContentDoc {
+  if (!value || typeof value !== "object") return false;
+  const doc = value as Record<string, unknown>;
+  if (doc.version !== 1 || !Array.isArray(doc.blocks) || doc.blocks.length > 500) return false;
+  return doc.blocks.every(block => {
+    if (!block || typeof block !== "object") return false;
+    const item = block as Record<string, unknown>;
+    if (item.type === "image") return typeof item.id === "string" && /^[0-9a-f-]{36}$/i.test(item.id);
+    if (item.type !== "paragraph" || !["left", "center", "right"].includes(String(item.align)) || !Array.isArray(item.runs)) return false;
+    return item.runs.every(run => {
+      if (!run || typeof run !== "object") return false;
+      const text = run as Record<string, unknown>;
+      return typeof text.text === "string" && ["sans", "serif", "mono"].includes(String(text.font))
+        && richSizes.includes(text.size as typeof richSizes[number]) && richColors.includes(text.color as typeof richColors[number])
+        && ["bold", "italic", "underline"].every(key => typeof text[key] === "boolean");
+    });
+  });
 }
 
 function isComment(value: unknown): value is CommunityComment {
@@ -89,9 +110,26 @@ function postInput(input: CommunityPostInput) {
   if (!categories.has(input.category)) throw new Error("게시글 분류가 올바르지 않아요.");
   const teamCode = input.teamCode.toUpperCase();
   if (input.board === "free" ? teamCode !== "" : !teamCodes.has(teamCode as typeof teamBoards[number]["code"])) throw new Error("게시판과 팀이 올바르지 않아요.");
+  if (input.contentDoc && !isRichDoc(input.contentDoc)) throw new Error("본문 서식이 올바르지 않아요.");
   return { ...input, teamCode, title: content(input.title, "제목", 200), content: content(input.content, "본문", 20000) };
 }
 
+export async function uploadCommunityImage(file: File) {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("JPG, PNG, WEBP 이미지만 올릴 수 있어요.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("이미지는 한 장에 5MB 이하로 올려 주세요.");
+  const form = new FormData();
+  form.append("image", file);
+  const response = await memberFetch("/api/community/images/", { method: "POST", body: form, signal: AbortSignal.timeout(60000) });
+  if (!response.ok) throw await apiError(response, "이미지를 올리지 못했어요.");
+  const data: unknown = await response.json().catch(() => null);
+  if (!data || typeof data !== "object" || !/^[0-9a-f-]{36}$/i.test(String((data as Record<string, unknown>).id))) throw new Error("이미지 응답이 올바르지 않아요.");
+  return (data as { id: string }).id;
+}
+
+async function apiError(response: Response, fallback: string) {
+  const message = memberError(await response.json().catch(() => null), fallback).trim();
+  return new Error(message.length <= 200 && /[가-힣]/.test(message) ? message : fallback);
+}
 function requestError(error: unknown, fallback: string) {
   if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) return new Error("요청 시간이 초과됐어요.");
   if (error instanceof Error && error.message.length <= 200 && /[가-힣]/.test(error.message)) return error;

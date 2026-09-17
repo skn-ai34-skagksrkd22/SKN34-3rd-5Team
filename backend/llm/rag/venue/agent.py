@@ -25,8 +25,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
+from ...progress import config_kwargs
+
 from ..club.retrieval import embed                # 질문 임베딩만 재사용 (같은 임베딩 모델)
-from ..domain_tools import tools_for
+from ..domain_tools import tools_for, visible_text
 from ..persona import FIXED
 from .prompts import NO_DOCUMENTS_MESSAGE, QUERY_TRANSFORM, SYSTEM
 
@@ -244,7 +246,7 @@ _ctx: contextvars.ContextVar[dict] = contextvars.ContextVar("venue_ctx")   # 도
 def llm():
     global _llm
     if _llm is None:
-        _llm = ChatOpenAI(model=LLM_MODEL, temperature=0, timeout=25, max_retries=0, reasoning_effort="none")
+        _llm = ChatOpenAI(model=LLM_MODEL, temperature=0, timeout=25, max_retries=0, reasoning_effort="medium", use_responses_api=True)
     return _llm
 
 
@@ -307,14 +309,16 @@ def _answer(question, history=None, hint_stadium=None):
         messages = [*[{"role": m["role"], "content": m["content"]} for m in history[-6:]],
                     {"role": "user", "content": question}]
         t0 = time.perf_counter()
-        result = agent().invoke({"messages": messages}, config={"recursion_limit": 6})
+        result = agent().invoke(
+            {"messages": messages},
+            **config_kwargs(recursion_limit=6),
+        )
         timing["agent_ms"] = round((time.perf_counter() - t0) * 1000)
     finally:
         _ctx.reset(token)
 
     final = result["messages"][-1]
-    text = final.content if isinstance(final.content, str) else "".join(
-        p.get("text", "") for p in final.content if isinstance(p, dict))
+    text = visible_text(final.content)
     tool_called = any(type(m).__name__ == "ToolMessage" for m in result["messages"])
 
     last = ctx.get("last") or {}

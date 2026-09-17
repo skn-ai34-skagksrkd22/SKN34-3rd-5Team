@@ -5,6 +5,10 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../lib/routes.ts", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } });
+const richSource = readFileSync(new URL("../lib/community-rich-content.ts", import.meta.url), "utf8");
+const { outputText: richOutput } = ts.transpileModule(richSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } });
+const richModule = { exports: {} };
+new Function("module", "exports", richOutput)(richModule, richModule.exports);
 
 function apiHarness({ legacy = [], fetched = [], loadFailure = false } = {}) {
   let blocked = false;
@@ -21,7 +25,7 @@ function apiHarness({ legacy = [], fetched = [], loadFailure = false } = {}) {
   };
   const react = { useEffect() {}, useMemo: callback => callback(), useSyncExternalStore: (_subscribe, snapshot) => snapshot() };
   const browser = { localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }, addEventListener() {}, removeEventListener() {}, dispatchEvent() {} };
-  const requireDependency = name => name === "./course-api" ? adapter : name === "./client-id" ? { createClientId: () => "11111111-1111-4111-8111-111111111111" } : name === "react" ? react : (() => { throw new Error(`unexpected import: ${name}`); })();
+  const requireDependency = name => name === "./course-api" ? adapter : name === "./client-id" ? { createClientId: () => "11111111-1111-4111-8111-111111111111" } : name === "./community-rich-content" ? richModule.exports : name === "react" ? react : (() => { throw new Error(`unexpected import: ${name}`); })();
   const testModule = { exports: {} };
   new Function("require", "module", "exports", "window", outputText)(requireDependency, testModule, testModule.exports, browser);
   return { ...testModule.exports, storage, block: () => { blocked = true; }, allow: () => { blocked = false; }, recover: () => { loadFailure = false; }, fetchCount: () => fetchCount };
@@ -39,6 +43,16 @@ test("a named course without a story persists its visits and separate start coor
   const route = { ...course(), start: { lat: 37.516, lng: 127.075 } };
   const saved = await api.saveRoute(route);
   assert.deepEqual(api.getRoutes().find(item => item.id === saved.id), saved);
+});
+
+test("a course retains story formatting and image references after save", async () => {
+  const contentDoc = { version: 1, blocks: [
+    { type: "paragraph", align: "center", runs: [{ text: "경기 전 카페", font: "serif", size: 20, color: "#246bf3", bold: true, italic: false, underline: false }] },
+    { type: "image", id: "d65e8543-1267-4530-a156-63be55546568" },
+  ] };
+  const api = apiHarness();
+  const saved = await api.saveRoute({ ...course(), content: "경기 전 카페\n[이미지]", contentDoc });
+  assert.deepEqual(api.getRoutes().find(item => item.id === saved.id).contentDoc, contentDoc);
 });
 
 test("editing updates one course and keeps other courses and legacy routes intact", async () => {

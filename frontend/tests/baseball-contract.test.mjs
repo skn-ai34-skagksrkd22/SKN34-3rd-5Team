@@ -19,10 +19,8 @@ test("baseball admin exposes exactly the approved 19 fixed resources", () => {
 });
 
 test("detail and admin keep scoped data paging and searchable relation controls", () => {
-  assert.match(detail, /시즌·홈팀/);
-  assert.match(detail, /더 보기/);
-  assert.match(detail, /공식 메뉴 분류/);
-  assert.match(detail, /price_krw/);
+  // 구장 상세의 "수집된 구장 안내"(시즌·홈팀별 수집 자료 목록)는 화면에서 제거했다
+  assert.doesNotMatch(detail, /수집된 구장 안내/);
   assert.match(admin, /관계 검색/);
   assert.match(client, /page_size: String\(pageSize\)/);
   assert.match(admin, /fetchAdminDetail\(name, id\)/);
@@ -47,6 +45,4 @@ test("repeated admin searches refresh and nullable stadium flags stay three-stat
   assert.match(schema, /accessible\?: boolean \| null/);
   assert.match(schema, /reservation_required\?: boolean \| null/);
   assert.match(types, /FacilityDto as Facility/);
-  assert.match(detail, /shownBoolean\(item\.accessible \?\? null, "있음", "없음"\)/);
-  assert.match(detail, /shownBoolean\(item\.reservation_required \?\? null, "필요", "불필요"\)/);
 });

@@ -10,7 +10,7 @@ import ts from "typescript";
 const frontend = dirname(dirname(fileURLToPath(import.meta.url)));
 const scratch = mkdtempSync(join(tmpdir(), "kbo-chat-direct-test-"));
 after(() => rmSync(scratch, { recursive: true, force: true }));
-for (const name of ["lib/member-auth-request", "lib/chat/types", "lib/chat/validation", "lib/chat/course", "lib/chat/client"]) {
+for (const name of ["lib/member-auth-request", "lib/chat/types", "lib/chat/validation", "lib/chat/course", "lib/chat/progress", "lib/chat/client"]) {
   const source = readFileSync(join(frontend, `${name}.ts`), "utf8");
   const { outputText } = ts.transpileModule(source, {
     fileName: `${name}.ts`, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -28,7 +28,7 @@ global.sessionStorage = {
 };
 const require = createRequire(join(scratch, "entry.cjs"));
 const { clearMemberTokens, saveMemberTokens } = require("./lib/member-auth-request.js");
-const { ChatClientError, deleteChatSession, fetchChatHistory, getChatStatus, renameChatSession, sendChatMessage, sendGuestChatMessage, sendNonStreamChatMessage } = require("./lib/chat/client.js");
+const { ChatClientError, contextPrefix, deleteChatSession, fetchChatHistory, getChatStatus, renameChatSession, sendChatMessage, sendGuestChatMessage, sendNonStreamChatMessage } = require("./lib/chat/client.js");
 const { courseToStops, parseChatCourse } = require("./lib/chat/course.js");
 const json = (value, status = 200) => Response.json(value, { status });
 const sse = events => new Response(new ReadableStream({
@@ -272,12 +272,12 @@ test("guest read failure is retryable while failed member auth never falls back 
   await assert.rejects(getChatStatus(), error => error instanceof ChatClientError && error.status === 401);
 });
 
-test("provider clears guest/member state on every identity switch and renders explicit Stop", () => {
+test("provider blocks guest questions and clears state on every identity switch", () => {
   const provider = readFileSync(join(frontend, "components/chat-provider.tsx"), "utf8");
   const surfaces = ["components/chat-popup.tsx", "components/chat-workspace.tsx"].map(path => readFileSync(join(frontend, path), "utf8"));
   assert.match(provider, /const identity = memberStatus === "authenticated"/);
   for (const cleanup of ["controller.abort()", "backendSessions.current.clear()", "archivedConversations.current.clear()", "historyRef.current = []", "streamingRef.current = \"\""]) assert.ok(provider.includes(cleanup));
-  assert.match(provider, /mode === "member" \? sendChatMessage : sendGuestChatMessage/);
+  assert.match(provider, /memberStatus !== "authenticated"/);
   assert.match(provider, /deliveryUncertain = mode === "member"/);
   assert.match(provider, /active\.wantsStop = true;[\s\S]*?if \(active\.checkpoint\)/);
   assert.match(provider, /if \(active\.wantsStop && !active\.stop\) \{ active\.stop = checkpoint; controller\.abort\(\); \}/);
@@ -288,7 +288,7 @@ test("provider clears guest/member state on every identity switch and renders ex
   assert.match(provider, /받은 답변은 저장되지 않았어요/);
   for (const surface of surfaces) {
     assert.match(surface, /답변 생성 중단/);
-    assert.match(surface, /게스트 대화/);
+    assert.match(surface, /로그인하고 질문하기/);
     assert.match(surface, /aria-relevant="additions"/);
   }
 });
@@ -297,4 +297,11 @@ test("authenticated chat has no legacy Next cookie relay", () => {
   assert.equal(existsSync(join(frontend, "app/chat-api/route.ts")), false);
   assert.equal(existsSync(join(frontend, "lib/chat/team.ts")), false);
   assert.equal(existsSync(join(frontend, "app/baseball-admin-api/route.ts")), false);
+});
+
+test("selected stadium and map origin are sent as leading tags the backend strips", () => {
+  assert.equal(contextPrefix(undefined), "");
+  assert.equal(contextPrefix({ intent: "route" }), "");
+  assert.equal(contextPrefix({ stadium: "잠실야구장" }), "[선택한 구장: 잠실야구장]\n");
+  assert.equal(contextPrefix({ stadium: "잠실야구장", origin: { lat: 37.5, lng: 127.0712345 } }), "[선택한 구장: 잠실야구장]\n[출발지: 37.500000,127.071235]\n");
 });

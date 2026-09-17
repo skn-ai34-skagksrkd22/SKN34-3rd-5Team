@@ -72,11 +72,9 @@ test("section requests keep selected home context and use visible pagination", a
   assert.equal(policies.searchParams.get("page"), "3");
 });
 
-test("ticket rows name their seat zone and keep policy snapshot provenance", () => {
+test("stadium detail keeps the collection date but no longer lists collected ticket rows", () => {
   const detail = readFileSync(new URL("../app/stadiums/[code]/page.tsx", import.meta.url), "utf8");
-  assert.match(detail, /seat_zone_name/);
-  assert.match(detail, /원문 요일 코드/);
-  assert.match(detail, /예매 정책 스냅샷/);
-  assert.match(detail, /원문 조건/);
+  // 좌석·가격·예매 정책 목록이 있던 "수집된 구장 안내"는 화면에서 제거했다
+  assert.doesNotMatch(detail, /수집된 구장 안내|예매 정책 스냅샷|seat_zone_name/);
   assert.match(detail, /collected_at\.slice/);
 });

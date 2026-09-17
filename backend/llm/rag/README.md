@@ -62,7 +62,7 @@ def answer(question: str, history: list[dict] | None, hint_stadium: str | None) 
 
 ## 연결 (백엔드 담당)
 
-프론트 계약(`docs/FRONTEND_BACKEND_HANDOFF.md` 7장: `{messages, context}` → `{reply}`)을 구현한 뷰가 `llm/rag_views.py` 에 있다. `config/urls.py` 에 두 줄:
+프론트 계약(`docs/handoffs/FRONTEND_BACKEND_HANDOFF.md` 7장: `{messages, context}` → `{reply}`)을 구현한 뷰가 `llm/rag_views.py` 에 있다. `config/urls.py` 에 두 줄:
 
 ```python
 from llm.rag_views import ChatView

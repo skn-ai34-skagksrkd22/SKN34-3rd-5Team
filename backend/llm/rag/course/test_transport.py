@@ -97,6 +97,11 @@ class ScopeSlotTest(unittest.TestCase):
         self.assertEqual(slots.scope_of("직관 후기 보고 코스 짜줘"), "both")
         self.assertEqual(slots.scope_of("카페 들렀다가 잠실 경기장 갈 거야"), "before")
         self.assertEqual(slots.scope_of("밥 먹고 경기 보러 갈래"), "before")
+        # 사이에 말이 끼거나 조사가 붙어도 경기 전만 (요청하지 않은 경기 후 장소를 넣지 않는다)
+        self.assertEqual(slots.scope_of("여자친구랑 분식집 갔다가 카페 방문 후 산책 좀 하고 구장에 가고 싶어"), "before")
+        self.assertEqual(slots.scope_of("카페 갔다가 야구장으로 갈게"), "before")
+        self.assertEqual(slots.scope_of("친구랑 경기 보고 나서 술 한잔할 곳"), "after")
+        self.assertEqual(slots.scope_of("치킨 먹고 싶어 잠실 코스 알려줘"), "both")
 
     def test_mode_carries_from_history(self):
         history = [{"role": "user", "content": "차 끌고 잠실 갈 거예요"}, {"role": "assistant", "content": "..."}]

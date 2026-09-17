@@ -9,7 +9,7 @@ import { getTeamBoard, getTeamBoardHref, type TeamCommunityPost } from "@/lib/te
 import styles from "./community-interactions.module.css";
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
-type Props = { post: TeamCommunityPost; posts: TeamCommunityPost[]; teamCode?: string; isFree?: boolean; onWrite?: () => void };
+type Props = { post: TeamCommunityPost; posts: TeamCommunityPost[]; teamCode?: string; isFree?: boolean; writeHref?: string };
 
 export function CommunityPostBottom(props: Props) {
   const { user } = useMemberAuth();
@@ -17,7 +17,7 @@ export function CommunityPostBottom(props: Props) {
   return <CommunityPostBottomContent key={`${props.post.id}:${actorId ?? "anonymous"}`} {...props} actorId={actorId} />;
 }
 
-function CommunityPostBottomContent({ post, posts, teamCode, isFree = false, onWrite, actorId }: Props & { actorId: number | null }) {
+function CommunityPostBottomContent({ post, posts, teamCode, isFree = false, writeHref, actorId }: Props & { actorId: number | null }) {
   const postHref = (item: TeamCommunityPost) => isFree ? `/community?post=${encodeURIComponent(item.id)}` : getTeamBoardHref(item.teamCode, item.id);
   const router = useRouter();
   const mounted = useRef(true);
@@ -116,16 +116,16 @@ function CommunityPostBottomContent({ post, posts, teamCode, isFree = false, onW
           </>}
         </li>)}
       </ul>}
-      <form className={styles.commentForm} onSubmit={event => void createComment(event)}>
+      {actorId ? <form className={styles.commentForm} onSubmit={event => void createComment(event)}>
         <textarea aria-label="댓글 내용" placeholder={actorId ? "댓글을 입력해 주세요." : "로그인 후 댓글을 작성할 수 있어요."} value={draft} onChange={event => setDraft(event.target.value)} maxLength={2000} required disabled={!actorId || saving} />
         <button type="submit" disabled={!actorId || saving}>{saving ? "처리 중" : "등록"}</button>
-      </form>
+      </form> : <p className={styles.bottomNote}>댓글 작성은 <Link href="/login">로그인</Link> 후 이용할 수 있어요.</p>}
       {message && <p role="status" className={styles.bottomNote}>{message}</p>}
       {error && <p role="alert" className={styles.errorNote}>{error}</p>}
     </section>
     <nav className={styles.articleNavigation} aria-label="게시글 이동">
       <div><Link href={isFree ? "/community" : getTeamBoardHref(teamCode)}>목록</Link>{next ? <Link href={postHref(next)}>다음글</Link> : <button disabled>다음글</button>}{previous ? <Link href={postHref(previous)}>이전글</Link> : <button disabled>이전글</button>}</div>
-      <div>{onWrite && <button type="button" className={styles.writeButton} onClick={onWrite}>글쓰기</button>}<button type="button" onClick={() => router.back()}>이전페이지</button><button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>맨위로 ↑</button></div>
+      <div>{writeHref && actorId && <Link className={styles.writeButton} href={writeHref}>글쓰기</Link>}<button type="button" onClick={() => router.back()}>이전페이지</button><button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>맨위로 ↑</button></div>
     </nav>
   </>;
 }

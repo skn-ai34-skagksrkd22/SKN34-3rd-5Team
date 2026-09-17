@@ -22,6 +22,7 @@ from llm.views import (
     ChatMessageView,
     ChatRoomDetailView,
     ChatRoomView,
+    ChatTurnListView,
     GuestChatView,
 )
 urlpatterns = [
@@ -40,6 +41,7 @@ urlpatterns = [
         "chat/sessions/<int:session_id>/messages/",
         ChatMessageView.as_view(),
     ),
+    path("chat/sessions/<int:session_id>/turns/", ChatTurnListView.as_view()),
     path("chat/turns/<uuid:turn_id>/finalize/", ChatFinalizeView.as_view()),
     path("chat/guest/", GuestChatView.as_view()),
     path('auth/',include('accounts.urls')),

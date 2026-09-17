@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { MemberHeaderActions } from "./member-header-actions";
 import { HeaderMenu } from "./header-menu";
+import { HeaderContentBounds } from "./header-content-bounds";
 
 export function SiteHeader() {
   return (
     <header className="site-header">
       <div className="container header-inner">
         <Link href="/" aria-label="KBO ROUTE 홈" className="brand">KBO<span className="brand-dot" /></Link>
+        <HeaderContentBounds />
         <div className="header-actions">
           <HeaderMenu />
           <MemberHeaderActions />

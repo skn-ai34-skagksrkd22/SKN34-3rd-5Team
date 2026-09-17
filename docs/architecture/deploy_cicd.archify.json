@@ -1,0 +1,265 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "협업 · CI/CD 배포 흐름",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "pr",
+        "label": "PR과 검사",
+        "focus": [
+          "branch",
+          "pr",
+          "check",
+          "build"
+        ],
+        "note": "feat 브랜치에서 팀 develop으로 PR, 매번 CI 검사"
+      },
+      {
+        "id": "merge-deploy",
+        "label": "병합과 배포",
+        "focus": [
+          "build",
+          "review",
+          "merge",
+          "deploy",
+          "compose"
+        ],
+        "note": "팀장 승인 후 병합되면 EC2에 자동 배포"
+      },
+      {
+        "id": "fail",
+        "label": "실패하면",
+        "focus": [
+          "check",
+          "build",
+          "fail",
+          "branch"
+        ],
+        "note": "검사가 실패하면 같은 브랜치에서 고쳐 다시 푸시"
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "team",
+      "label": "개발자 · 팀 저장소"
+    },
+    {
+      "id": "ci",
+      "label": "GitHub Actions"
+    },
+    {
+      "id": "ec2",
+      "label": "EC2 배포 · 실패 처리"
+    }
+  ],
+  "phases": [
+    {
+      "id": "work",
+      "label": "작업",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "ci",
+      "label": "CI 검사",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "cd",
+      "label": "병합 · 배포",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "branch",
+    "pr",
+    "check",
+    "build",
+    "review",
+    "merge",
+    "deploy",
+    "compose"
+  ],
+  "nodes": [
+    {
+      "id": "branch",
+      "lane": "team",
+      "col": 0,
+      "type": "frontend",
+      "label": "feat 브랜치",
+      "sublabel": "최신 develop에서",
+      "width": 132
+    },
+    {
+      "id": "pr",
+      "lane": "team",
+      "col": 1,
+      "type": "frontend",
+      "label": "Pull Request",
+      "sublabel": "→ 팀 develop",
+      "width": 132
+    },
+    {
+      "id": "check",
+      "lane": "ci",
+      "col": 2,
+      "type": "backend",
+      "label": "Django check",
+      "sublabel": "manage.py check",
+      "width": 132
+    },
+    {
+      "id": "build",
+      "lane": "ci",
+      "col": 3,
+      "type": "backend",
+      "label": "Next.js build",
+      "sublabel": "npm ci · build",
+      "width": 132
+    },
+    {
+      "id": "review",
+      "lane": "team",
+      "col": 3,
+      "type": "security",
+      "label": "팀장 리뷰",
+      "sublabel": "Approve 필수",
+      "width": 132
+    },
+    {
+      "id": "merge",
+      "lane": "team",
+      "col": 4,
+      "type": "security",
+      "label": "develop 병합",
+      "sublabel": "Squash and merge",
+      "width": 132
+    },
+    {
+      "id": "deploy",
+      "lane": "ci",
+      "col": 4,
+      "type": "cloud",
+      "label": "cd-deploy",
+      "sublabel": "SSH → EC2",
+      "tag": "GitHub Secrets",
+      "width": 132
+    },
+    {
+      "id": "compose",
+      "lane": "ec2",
+      "col": 5,
+      "type": "backend",
+      "label": "compose up --build",
+      "sublabel": "migrate → 읽기 계정 → 서버",
+      "width": 132
+    },
+    {
+      "id": "fail",
+      "lane": "ec2",
+      "col": 3,
+      "type": "security",
+      "label": "검사 실패",
+      "sublabel": "같은 브랜치에서 수정",
+      "width": 132
+    }
+  ],
+  "edges": [
+    {
+      "id": "open-pr",
+      "from": "branch",
+      "to": "pr",
+      "label": "push"
+    },
+    {
+      "id": "trigger",
+      "from": "pr",
+      "to": "check",
+      "label": "PR 이벤트",
+      "variant": "emphasis"
+    },
+    {
+      "id": "then-build",
+      "from": "check",
+      "to": "build"
+    },
+    {
+      "id": "green",
+      "from": "build",
+      "to": "review",
+      "label": "통과",
+      "variant": "emphasis"
+    },
+    {
+      "id": "approve",
+      "from": "review",
+      "to": "merge",
+      "label": "승인",
+      "variant": "security"
+    },
+    {
+      "id": "push-develop",
+      "from": "merge",
+      "to": "deploy",
+      "label": "push",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ssh",
+      "from": "deploy",
+      "to": "compose",
+      "label": "SSH 배포",
+      "variant": "emphasis"
+    },
+    {
+      "id": "red",
+      "from": "build",
+      "to": "fail",
+      "label": "실패",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "retry",
+      "from": "fail",
+      "to": "branch",
+      "label": "수정 후 재푸시",
+      "variant": "dashed",
+      "role": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "브랜치 규칙",
+      "items": [
+        "모든 작업은 feat/작업명",
+        "팀 main · develop 직접 push 금지"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "커밋 규칙",
+      "items": [
+        "type: 한글 작업 내용",
+        "PR 하나에 목적 하나"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "배포 조건",
+      "items": [
+        "CI 통과 + 팀장 승인 후에만 병합",
+        "develop push 때만 EC2 배포"
+      ]
+    }
+  ]
+}

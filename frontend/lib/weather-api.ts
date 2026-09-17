@@ -31,6 +31,19 @@ export function parseStadiumWeather(value: unknown): StadiumWeather | null {
   return weather as StadiumWeather;
 }
 
+// The backend runs only a few KMA lookups at once and answers 429 instead of queueing,
+// so several cards loading together (or a dev re-mount) briefly retry before giving up.
+const BUSY_RETRY_DELAYS_MS = [600, 1500];
+
+function wait(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const onAbort = () => { clearTimeout(timer); reject(signal?.reason); };
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export async function fetchStadiumWeather(
   stadium: string,
   date: string,
@@ -40,14 +53,20 @@ export async function fetchStadiumWeather(
 ) {
   const query = new URLSearchParams({ stadium, date, time });
   try {
-    const response = await fetcher(`/api/weather/?${query}`, {
-      cache: "no-store",
-      redirect: "error",
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000),
-    });
-    if (!response.ok) return null;
-    const body: unknown = await response.json();
-    return parseStadiumWeather(body && typeof body === "object" ? (body as Record<string, unknown>).weather : null);
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await fetcher(`/api/weather/?${query}`, {
+        cache: "no-store",
+        redirect: "error",
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000),
+      });
+      if (response.status === 429 && attempt < BUSY_RETRY_DELAYS_MS.length) {
+        await wait(BUSY_RETRY_DELAYS_MS[attempt], signal);
+        continue;
+      }
+      if (!response.ok) return null;
+      const body: unknown = await response.json();
+      return parseStadiumWeather(body && typeof body === "object" ? (body as Record<string, unknown>).weather : null);
+    }
   } catch {
     return null;
   }

@@ -65,6 +65,10 @@ jobs:
             docker compose up -d --no-deps --force-recreate nginx
             docker compose exec -T nginx nginx -t
 
+            # 오래된 Docker 이미지와 빌드 캐시 정리
+            docker image prune -af --filter "until=24h"
+            docker builder prune -af --filter "until=24h"
+
   # 3. Discord 알림!
   notify-discord:
     needs: [ci-test, cd-deploy]

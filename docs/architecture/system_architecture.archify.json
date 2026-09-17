@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "KBO 직관 안내 챗봇 — 시스템 아키텍처",
+    "quality_profile": "showcase",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "serve",
+        "label": "요청 처리 (서빙)",
+        "focus": [
+          "user",
+          "nginx",
+          "next",
+          "django",
+          "pipeline",
+          "openai",
+          "vector",
+          "rdb"
+        ],
+        "note": "질문마다 검색 + 생성만 수행"
+      },
+      {
+        "id": "index",
+        "label": "오프라인 인덱싱",
+        "focus": [
+          "data",
+          "indexer",
+          "vector"
+        ],
+        "note": "청킹 · 임베딩 · 적재는 build_index가 한 번"
+      },
+      {
+        "id": "tools",
+        "label": "에이전트 도구",
+        "focus": [
+          "pipeline",
+          "rdb",
+          "kakao",
+          "openai"
+        ],
+        "note": "읽기 전용 DB 조회와 카카오 주변 장소"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "사용자",
+      "sublabel": "웹 브라우저",
+      "pos": [
+        40,
+        100
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "cloud",
+      "label": "Nginx",
+      "sublabel": ":80 리버스 프록시",
+      "pos": [
+        240,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "next",
+      "type": "frontend",
+      "label": "Next.js 16",
+      "sublabel": "채팅 · 지도 · 코스",
+      "pos": [
+        450,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "django",
+      "type": "backend",
+      "label": "Django REST",
+      "sublabel": "ChatService · SSE",
+      "pos": [
+        660,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "pipeline",
+      "type": "backend",
+      "label": "RAG 파이프라인",
+      "sublabel": "검색 → 도구 계획 → 스트리밍",
+      "pos": [
+        870,
+        100
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "LangChain"
+    },
+    {
+      "id": "openai",
+      "type": "external",
+      "label": "OpenAI API",
+      "sublabel": "LLM · 임베딩",
+      "pos": [
+        1110,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "rdb",
+      "type": "database",
+      "label": "야구 정형 DB",
+      "sublabel": "경기 · 순위 · 가격",
+      "pos": [
+        660,
+        290
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "읽기 전용 계정"
+    },
+    {
+      "id": "vector",
+      "type": "database",
+      "label": "pgvector",
+      "sublabel": "llm_documentchunk",
+      "pos": [
+        870,
+        290
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "HNSW · cosine"
+    },
+    {
+      "id": "kakao",
+      "type": "external",
+      "label": "Kakao Local",
+      "sublabel": "주변 장소 · 지도",
+      "pos": [
+        1110,
+        290
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "data",
+      "type": "external",
+      "label": "전처리 데이터",
+      "sublabel": "CSV 21종 · 규정 JSON",
+      "pos": [
+        660,
+        480
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "indexer",
+      "type": "backend",
+      "label": "build_index",
+      "sublabel": "오프라인 인덱싱",
+      "pos": [
+        870,
+        480
+      ],
+      "size": [
+        170,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Docker Compose (EC2)",
+      "wraps": [
+        "nginx",
+        "next",
+        "django",
+        "pipeline",
+        "rdb",
+        "vector",
+        "indexer"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "PostgreSQL 18",
+      "wraps": [
+        "rdb",
+        "vector"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-nginx",
+      "from": "user",
+      "to": "nginx",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "nginx-next",
+      "from": "nginx",
+      "to": "next"
+    },
+    {
+      "id": "next-django",
+      "from": "next",
+      "to": "django",
+      "label": "/chat"
+    },
+    {
+      "id": "django-pipeline",
+      "from": "django",
+      "to": "pipeline",
+      "variant": "emphasis"
+    },
+    {
+      "id": "pipeline-openai",
+      "from": "pipeline",
+      "to": "openai",
+      "label": "생성"
+    },
+    {
+      "id": "pipeline-vector",
+      "from": "pipeline",
+      "to": "vector",
+      "label": "검색 top-6",
+      "variant": "emphasis",
+      "labelAt": [
+        955,
+        210
+      ]
+    },
+    {
+      "id": "pipeline-rdb",
+      "from": "pipeline",
+      "to": "rdb",
+      "label": "SELECT"
+    },
+    {
+      "id": "pipeline-kakao",
+      "from": "pipeline",
+      "to": "kakao",
+      "label": "도구 호출",
+      "variant": "dashed"
+    },
+    {
+      "id": "data-indexer",
+      "from": "data",
+      "to": "indexer",
+      "label": "청킹"
+    },
+    {
+      "id": "indexer-vector",
+      "from": "indexer",
+      "to": "vector",
+      "label": "적재",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "서빙 경로 (요청마다)",
+      "items": [
+        "질문 → 검색 → 도구 계획(LLM) → 답변 토큰 스트리밍(SSE)",
+        "검색 중앙값 9ms · 응답 시간 대부분은 LLM"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "인덱싱 경로 (오프라인)",
+      "items": [
+        "build_index 명령으로 1회 적재 (3,839청크)",
+        "요청마다 청킹 · 임베딩 하지 않음"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "안전장치",
+      "items": [
+        "야구 DB는 읽기 전용 계정 + SQL 검증기",
+        "근거 등급(OFFICIAL~THIRD_PARTY) 표시"
+      ]
+    }
+  ]
+}

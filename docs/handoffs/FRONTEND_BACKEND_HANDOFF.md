@@ -6,7 +6,7 @@
 - 요청은 기존 장소 검색 필드 `method`, `keyword?`, `category?`, `lat`, `lng`, `radius?`, `page`, `size`, `sort`만 보내며 기존 Next `action: "places"`는 보내지 않는다.
 - 응답은 기존 `{ places, hasNextPage }`와 카카오 장소 ID 및 문자열 `x/y`를 유지하고 `syncedAt`을 추가한다. `syncedAt`은 공급자 조회 성공 시각이며 모든 DB 행의 저장 시각을 뜻하지 않는다. 오류는 `{ "error": "안전한 사용자 메시지" }`다.
 - 브라우저에서 카카오 REST 키를 보내거나 Next `/directions-api`를 장소 검색 릴레이로 사용하지 않는다. 지도 JavaScript SDK와 Django 길찾기·TourAPI 경로는 별도 계약으로 유지한다.
-- 공개 API는 장소 검색·목록·상세이고, POST/PATCH/DELETE CRUD는 기존 JWT의 활성 staff 관리자만 허용한다. 자세한 내부 함수 계약은 `docs/PLACE_TOOLS_HANDOFF.md`를 따른다.
+- 공개 API는 장소 검색·목록·상세이고, POST/PATCH/DELETE CRUD는 기존 JWT의 활성 staff 관리자만 허용한다. 자세한 내부 함수 계약은 `docs/handoffs/PLACE_TOOLS_HANDOFF.md`를 따른다.
 
 작성 기준: 2026-09-10, `feat/front` 브랜치
 
@@ -357,7 +357,7 @@ RAG 답변에 출처를 표시하려면 추후 응답을 아래처럼 확장하�
 
 TVING 네트워크·검증·저장은 Django `tving` 앱이 소유합니다. 브라우저는 `/api/tving/daily/`, `/api/tving/schedule/`, `/api/tving/details/teams/{code}/`, `/api/tving/details/athletes/{code}/`를 호출합니다. Next의 `/kbo-api` route, 프로세스 timer와 `.cache/kbo` 파일 저장은 제거됐습니다.
 
-각 명시적 조회는 공급자를 새로 호출하며 `EXTERNAL_DATA_SYNC_INTERVAL_SECONDS`(기본 600초)는 entity별 DB 쓰기만 억제합니다. 기존 `Team`·`Game`·`StandingHistory`를 재사용하고 TVING과 CSV가 겹치면 TVING provenance 한 행만 유지합니다. 전체 계약과 callable CRUD/search 도구는 `frontend/docs/KBO_DATA.md`와 `docs/TVING_TOOLS_HANDOFF.md`를 기준으로 합니다.
+각 명시적 조회는 공급자를 새로 호출하며 `EXTERNAL_DATA_SYNC_INTERVAL_SECONDS`(기본 600초)는 entity별 DB 쓰기만 억제합니다. 기존 `Team`·`Game`·`StandingHistory`를 재사용하고 TVING과 CSV가 겹치면 TVING provenance 한 행만 유지합니다. 전체 계약과 callable CRUD/search 도구는 `frontend/docs/KBO_DATA.md`와 `docs/handoffs/TVING_TOOLS_HANDOFF.md`를 기준으로 합니다.
 
 정확한 필드 타입은 다음 프론트 파일을 계약 기준으로 본다.
 
@@ -477,13 +477,13 @@ from api.views import test_api
 
 ## 15. 관련 파일
 
-- 프론트 전체 현황: [`frontend/docs/UIUX_PROGRESS.md`](../frontend/docs/UIUX_PROGRESS.md)
-- 챗봇 연결: [`frontend/docs/CHAT_SETUP.md`](../frontend/docs/CHAT_SETUP.md)
-- KBO 수집 정책: [`frontend/docs/KBO_DATA.md`](../frontend/docs/KBO_DATA.md)
-- 루트 임시 저장·타입: [`frontend/lib/routes.ts`](../frontend/lib/routes.ts)
-- 챗봇 요청 타입: [`frontend/lib/chat/types.ts`](../frontend/lib/chat/types.ts)
-- KBO 일정·순위 타입: [`frontend/lib/kbo/types.ts`](../frontend/lib/kbo/types.ts)
-- KBO 구단·선수 타입: [`frontend/lib/kbo/details-types.ts`](../frontend/lib/kbo/details-types.ts)
-- YouTube 타입: [`frontend/lib/youtube/types.ts`](../frontend/lib/youtube/types.ts)
-- Nginx 분기: [`nginx/nginx.conf`](../nginx/nginx.conf)
-- Docker 구성: [`docker-compose.yml`](../docker-compose.yml)
+- 프론트 전체 현황: [`frontend/docs/UIUX_PROGRESS.md`](../../frontend/docs/UIUX_PROGRESS.md)
+- 챗봇 연결: [`frontend/docs/CHAT_SETUP.md`](../../frontend/docs/CHAT_SETUP.md)
+- KBO 수집 정책: [`frontend/docs/KBO_DATA.md`](../../frontend/docs/KBO_DATA.md)
+- 루트 임시 저장·타입: [`frontend/lib/routes.ts`](../../frontend/lib/routes.ts)
+- 챗봇 요청 타입: [`frontend/lib/chat/types.ts`](../../frontend/lib/chat/types.ts)
+- KBO 일정·순위 타입: [`frontend/lib/kbo/types.ts`](../../frontend/lib/kbo/types.ts)
+- KBO 구단·선수 타입: [`frontend/lib/kbo/details-types.ts`](../../frontend/lib/kbo/details-types.ts)
+- YouTube 타입: [`frontend/lib/youtube/types.ts`](../../frontend/lib/youtube/types.ts)
+- Nginx 분기: [`nginx/nginx.conf`](../../nginx/nginx.conf)
+- Docker 구성: [`docker-compose.yml`](../../docker-compose.yml)

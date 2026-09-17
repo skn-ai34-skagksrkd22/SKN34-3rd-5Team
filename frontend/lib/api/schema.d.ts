@@ -1202,6 +1202,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/sessions/{session_id}/turns/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["chat_sessions_turns_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/turns/{turn_id}/finalize/": {
         parameters: {
             query?: never;
@@ -1959,6 +1975,9 @@ export interface components {
             places?: components["schemas"]["ChatCoursePlace"][];
             coursePayload?: components["schemas"]["ChatCoursePayload"] | null;
             route?: string;
+            /** Format: uuid */
+            turn_id: string;
+            progress: components["schemas"]["ChatProgressEvent"][];
             session_id: number;
             user_message: string;
             assistant_message: string;
@@ -1966,6 +1985,40 @@ export interface components {
             user_message_id: number;
             assistant_message_id: number;
         };
+        ChatProgressEvent: {
+            /** Format: uuid */
+            turn_id: string;
+            sequence_no: number;
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: uuid */
+            parent_operation_id: string | null;
+            kind: components["schemas"]["ChatProgressEventKindEnum"];
+            status: components["schemas"]["ChatProgressEventStatusEnum"];
+            label: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            readonly tool_name: string | null;
+            readonly summary: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * @description * `phase` - 처리
+         *     * `retrieval` - 검색
+         *     * `tool` - 도구
+         * @enum {string}
+         */
+        ChatProgressEventKindEnum: "phase" | "retrieval" | "tool";
+        /**
+         * @description * `started` - 시작
+         *     * `completed` - 완료
+         *     * `failed` - 실패
+         *     * `interrupted` - 중단
+         *     * `unknown` - 확인 불가
+         * @enum {string}
+         */
+        ChatProgressEventStatusEnum: "started" | "completed" | "failed" | "interrupted" | "unknown";
         ChatSession: {
             readonly id: number;
             title?: string;
@@ -1974,6 +2027,24 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
         };
+        ChatTurn: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly question: string;
+            readonly status: components["schemas"]["ChatTurnStatusEnum"];
+            readonly base_sequence: number;
+            readonly human_message_id: number | null;
+            readonly assistant_message_id: number | null;
+            readonly progress: components["schemas"]["ChatProgressEvent"][];
+        };
+        /**
+         * @description * `pending` - pending
+         *     * `completed` - completed
+         *     * `stopped` - stopped
+         *     * `failed` - failed
+         * @enum {string}
+         */
+        ChatTurnStatusEnum: "pending" | "completed" | "stopped" | "failed";
         /**
          * @description * `질문` - 질문
          *     * `잡담` - 잡담
@@ -2022,6 +2093,7 @@ export interface components {
             readonly author: string;
             title: string;
             content: string;
+            contentDoc?: unknown;
             category: components["schemas"]["CommunityCategoryEnum"];
             /** Format: date-time */
             readonly createdAt: string | null;
@@ -2045,6 +2117,7 @@ export interface components {
             category: components["schemas"]["CommunityCategoryEnum"];
             title: string;
             content: string;
+            contentDoc?: unknown;
         };
         CommunityReportResult: {
             id: number;
@@ -2096,6 +2169,7 @@ export interface components {
             stadium: string;
             description: string;
             content: string;
+            contentDoc?: unknown;
             contentFormat?: components["schemas"]["ContentFormatEnum"];
             duration: string;
             cover: string;
@@ -2118,6 +2192,7 @@ export interface components {
             title: string;
             stadium: string;
             content?: string;
+            contentDoc?: unknown;
             contentFormat?: components["schemas"]["ContentFormatEnum"] | components["schemas"]["BlankEnum"];
             duration: string;
             tags: string[];
@@ -2136,6 +2211,7 @@ export interface components {
             stadium: string;
             description: string;
             content: string;
+            contentDoc?: unknown;
             contentFormat?: components["schemas"]["ContentFormatEnum"];
             duration: string;
             cover: string;
@@ -2505,7 +2581,7 @@ export interface components {
             route?: string;
             assistant_message: string;
         };
-        GuestChatEventPayload: components["schemas"]["GuestChatDeltaEvent"] | components["schemas"]["GuestChatDoneEvent"] | components["schemas"]["ChatErrorEvent"];
+        GuestChatEventPayload: components["schemas"]["GuestChatDeltaEvent"] | components["schemas"]["GuestChatDoneEvent"] | components["schemas"]["ChatProgressEvent"] | components["schemas"]["ChatErrorEvent"];
         GuestChatMessage: {
             role: components["schemas"]["GuestChatMessageRoleEnum"];
             content: string;
@@ -2582,7 +2658,7 @@ export interface components {
         LogoutRequest: {
             refresh: string;
         };
-        MemberChatEventPayload: components["schemas"]["ChatCheckpointEvent"] | components["schemas"]["ChatDeltaEvent"] | components["schemas"]["ChatDoneEvent"] | components["schemas"]["ChatErrorEvent"];
+        MemberChatEventPayload: components["schemas"]["ChatCheckpointEvent"] | components["schemas"]["ChatDeltaEvent"] | components["schemas"]["ChatDoneEvent"] | components["schemas"]["ChatProgressEvent"] | components["schemas"]["ChatErrorEvent"];
         MemberUser: {
             readonly id: number;
             /** @description Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only. */
@@ -2669,6 +2745,21 @@ export interface components {
              */
             previous?: string | null;
             results: components["schemas"]["AdminMember"][];
+        };
+        PaginatedChatTurnList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous: string | null;
+            results: components["schemas"]["ChatTurn"][];
         };
         PaginatedFacilityList: {
             /** @example 123 */
@@ -3057,11 +3148,13 @@ export interface components {
             category?: components["schemas"]["CommunityCategoryEnum"];
             title?: string;
             content?: string;
+            contentDoc?: unknown;
         };
         PatchedCoursePatchRequest: {
             title?: string;
             stadium?: string;
             content?: string;
+            contentDoc?: unknown;
             contentFormat?: components["schemas"]["ContentFormatEnum"] | components["schemas"]["BlankEnum"];
             duration?: string;
             tags?: string[];
@@ -9000,6 +9093,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatNonStreamResponse"];
+                };
+            };
+        };
+    };
+    chat_sessions_turns_list: {
+        parameters: {
+            query?: {
+                /** @description A page number within the paginated result set. */
+                page?: number;
+            };
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedChatTurnList"];
                 };
             };
         };

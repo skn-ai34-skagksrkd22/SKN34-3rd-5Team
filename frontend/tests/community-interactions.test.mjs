@@ -4,20 +4,27 @@ import { test } from "node:test";
 import ts from "typescript";
 
 const frontend = new URL("../", import.meta.url);
-const bottom = readFileSync(new URL("components/community-post-bottom.tsx", frontend), "utf8");
 const vote = readFileSync(new URL("components/community-post-vote.tsx", frontend), "utf8");
-const editor = readFileSync(new URL("components/community-post-editor.tsx", frontend), "utf8");
 
-test("bottom write action delegates to the real editor and has no placeholder fallback", () => {
-  assert.match(bottom, /onWrite\?: \(\) => void/);
-  assert.match(bottom, /\{onWrite && <button[^>]+onClick=\{onWrite\}>글쓰기<\/button>\}/);
-  assert.doesNotMatch(bottom, /게시글 작성은 서버 연결 후 이용할 수 있어요|글쓰기 안내|showModal/);
+test("write links preserve the board and selected team", () => {
+  const source = readFileSync(new URL("lib/team-community.ts", frontend), "utf8");
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } });
+  const testModule = { exports: {} };
+  new Function("module", "exports", outputText)(testModule, testModule.exports);
+  const href = testModule.exports.getCommunityWriteHref;
+  assert.equal(href("free", "LG"), "/community/write?board=free");
+  assert.equal(href("teams", "LG"), "/community/write?board=teams&team=LG");
+  assert.equal(href("teams", "invalid"), "/community/write?board=teams");
 });
 
-test("editor idempotency keys retain a native insecure-origin fallback", () => {
-  assert.match(editor, /typeof crypto\.randomUUID === "function"/);
-  assert.match(editor, /crypto\.getRandomValues\(new Uint8Array\(16\)\)/);
-  assert.doesNotMatch(editor, /Math\.random/);
+test("post submission keys remain unique without crypto on HTTP", () => {
+  const source = readFileSync(new URL("lib/community-post-key.ts", frontend), "utf8");
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } });
+  const testModule = { exports: {} };
+  new Function("module", "exports", "crypto", outputText)(testModule, testModule.exports, undefined);
+  const keys = Array.from({ length: 1000 }, () => testModule.exports.createCommunitySubmissionKey());
+  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(keys.every(key => key.length > 0 && key.length <= 128));
 });
 
 test("authenticated vote waits for server state and always releases the matching request", () => {

@@ -43,6 +43,7 @@
 .resident-number-secret::-ms-reveal, .resident-number-secret::-ms-clear { display: none; }
 @media (max-width: 640px) {
   .auth-page .auth-field input:not([type="checkbox"]) { font-size: 16px; }
+  .auth-page .auth-field select { font-size: 16px; }
   .auth-page .auth-field input::placeholder { font-size: 12px; }
   .auth-panel { padding-inline: 22px; }
   .auth-agreements { padding-inline: 12px; }

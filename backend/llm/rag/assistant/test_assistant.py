@@ -4,12 +4,13 @@
 """
 import json
 import unittest
+from threading import Event
 from types import SimpleNamespace
 from unittest import mock
 
 from django.test import override_settings
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 
 from . import pipeline, tools
 from ...tools import DOMAIN_TOOL_NAMES
@@ -73,6 +74,13 @@ class PromptAndRagTest(unittest.TestCase):
         self.assertIn('kind="stay"', pipeline.route_hint("챔피언스 필드 주변 숙박 추천"))
         self.assertEqual(pipeline.route_hint("LG 몇 위야?"), "")
 
+    def test_visible_text_drops_reasoning_and_tool_blocks(self):
+        self.assertEqual(pipeline._text([
+            {"type": "reasoning", "text": "숨은 추론"},
+            {"type": "tool_call", "text": "도구 인자"},
+            {"type": "output_text", "text": "공개 답변"},
+        ]), "공개 답변")
+
     def test_retrieve_uses_question_then_history_then_screen_stadium(self):
         seen = []
 
@@ -121,6 +129,13 @@ class DbToolTest(unittest.TestCase):
         self.assertIn("형식", tools.get_games(date_from="9월 16일", _service_obj=svc))
         self.assertIn("팀을 찾지 못했", tools.get_ticket_prices(team="없는팀", _service_obj=svc))
         self.assertEqual(svc.sql, [])
+
+    def test_ticket_prices_accept_stadium_when_team_is_unknown(self):
+        svc = FakeService()
+        tools.get_ticket_prices(stadium="잠실야구장", _service_obj=svc)
+        sql, params, _ = svc.sql[0]
+        self.assertEqual(params, {"stadium": "JAMSIL"})
+        self.assertIn("s.stadium_code = %(stadium)s", sql)
 
     def test_free_sql_requires_schema_first_and_caps_rows(self):
         svc = FakeService()
@@ -233,6 +248,59 @@ class AgentFlowTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             pipeline.answer("안녕", _chain_obj=chain)
 
+    def test_stream_does_not_repeat_the_same_tool_call(self):
+        invoked = []
+
+        def get_games(team: str):
+            """Test games."""
+            invoked.append(team)
+            return {"count": 1}
+
+        tool = tools.StructuredTool.from_function(get_games)
+        repeated = call("get_games", {"team": "LG"}, 1)
+        model = scripted(
+            AIMessage(content="", tool_calls=[repeated]),
+            AIMessage(content="", tool_calls=[{**repeated, "id": "call_2"}]),
+            AIMessage(content="최종 답변"),
+        )
+        self.assertEqual(
+            "".join(pipeline.stream_answer(
+                "LG 일정", model=model, tool_list=[tool], retriever=no_docs,
+            )),
+            "최종 답변",
+        )
+        self.assertEqual(invoked, ["LG"])
+
+    def test_stream_keeps_new_tool_calls_beside_a_duplicate(self):
+        invoked = []
+
+        def get_games(team: str):
+            """Test games."""
+            invoked.append(("games", team))
+            return {"count": 1}
+
+        def get_standings(as_of: str):
+            """Test standings."""
+            invoked.append(("standings", as_of))
+            return {"rank": 1}
+
+        game = call("get_games", {"team": "LG"}, 1)
+        model = scripted(
+            AIMessage(content="", tool_calls=[game]),
+            AIMessage(content="", tool_calls=[
+                {**game, "id": "call_2"},
+                call("get_standings", {"as_of": "2026-09-16"}, 3),
+            ]),
+            AIMessage(content="READY"),
+            AIMessage(content="최종 답변"),
+        )
+        self.assertEqual("".join(pipeline.stream_answer(
+            "LG 정보", model=model,
+            tool_list=[tools.StructuredTool.from_function(get_games), tools.StructuredTool.from_function(get_standings)],
+            retriever=no_docs,
+        )), "최종 답변")
+        self.assertEqual(invoked, [("games", "LG"), ("standings", "2026-09-16")])
+
 
 class DispatcherTest(unittest.TestCase):
     def test_every_baseball_question_goes_to_assistant(self):
@@ -267,6 +335,66 @@ class DispatcherTest(unittest.TestCase):
             r = dispatcher.answer("LG 몇 위야?")
         self.assertEqual(r["answer"], "도메인 답")
         self.assertTrue(r["route"].startswith("agent:error>"))
+
+    def test_final_answer_uses_provider_chunks_before_provider_finishes(self):
+        release = Event()
+        streamed = Event()
+
+        class DelayedModel:
+            def bind_tools(self, _tools):
+                return self
+
+            def invoke(self, _messages, config=None):
+                return AIMessage(content="READY")
+
+            def stream(self, _messages, config=None):
+                streamed.set()
+                yield AIMessageChunk(content="첫 청크")
+                if not release.wait(2):
+                    raise AssertionError("consumer did not receive the first provider chunk")
+                yield AIMessageChunk(content="와 끝")
+
+        chunks = pipeline.stream_answer(
+            "질문", model=DelayedModel(), tool_list=[], retriever=no_docs,
+        )
+        self.assertEqual(next(chunks), "첫 청크")
+        self.assertTrue(streamed.is_set())
+        release.set()
+        self.assertEqual(list(chunks), ["와 끝"])
+
+    def test_stream_failure_after_public_delta_never_appends_fallback_answer(self):
+        from .. import dispatcher
+
+        def partial(*_args, **_kwargs):
+            yield "부분 답변"
+            raise RuntimeError("provider disconnected")
+
+        with (
+            mock.patch.object(dispatcher.assistant, "stream_answer", side_effect=partial),
+            mock.patch.object(dispatcher, "_domain_answer") as fallback,
+        ):
+            stream = dispatcher.stream("LG 일정 알려줘")
+            self.assertEqual(next(stream), "부분 답변")
+            with self.assertRaises(RuntimeError):
+                next(stream)
+        fallback.assert_not_called()
+
+    def test_stream_strips_selected_stadium_prefix_like_invoke(self):
+        from .. import pipeline as rag_pipeline
+        args = rag_pipeline.RagChatChain._args({
+            "question": "[선택한 구장: 잠실야구장]\n가는 법은?",
+            "chat_history": [HumanMessage(content="잠실 알려줘"), AIMessage(content="잠실 답변")],
+            "intent": "stadium",
+        })
+        self.assertEqual(args, {
+            "question": "가는 법은?",
+            "history": [
+                {"role": "user", "content": "잠실 알려줘"},
+                {"role": "assistant", "content": "잠실 답변"},
+            ],
+            "stadium_name": "잠실야구장",
+            "intent": "stadium",
+        })
 
 
 if __name__ == "__main__":

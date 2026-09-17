@@ -30,13 +30,13 @@ function GameRow({ game }: { game: KboGame }) {
     <div className="kbo-fixture-when"><time dateTime={game.startsAt ?? game.date}>{game.time || "시간 미정"}</time><span className={`kbo-fixture-status is-${game.status}`}>{game.statusLabel}</span></div>
     <div className="kbo-fixture-match">
       <div className="kbo-fixture-team kbo-fixture-away"><DetailTeamMark code={game.away.code} name={game.away.name} />
-        <div><strong>{game.away.name}<small>원정</small></strong><p>선발 <span>{game.away.startingPitcher || "미정"}</span></p></div>
+        <div><strong>{game.away.name}<small>원정</small></strong><p>투수 <span>{game.away.startingPitcher || "미정"}</span></p></div>
       </div>
       <div className={`kbo-fixture-score${hasScore ? " has-score" : ""}`} aria-label={hasScore ? `${game.away.name} ${game.away.score}점, ${game.home.name} ${game.home.score}점` : "대"}>
         {hasScore ? <><strong className={game.status === "final" && game.away.score! > game.home.score! ? "is-winner" : undefined}>{game.away.score}</strong><span>:</span><strong className={game.status === "final" && game.home.score! > game.away.score! ? "is-winner" : undefined}>{game.home.score}</strong></> : <span>VS</span>}
       </div>
       <div className="kbo-fixture-team kbo-fixture-home"><DetailTeamMark code={game.home.code} name={game.home.name} />
-        <div><strong>{game.home.name}<small>홈</small></strong><p>선발 <span>{game.home.startingPitcher || "미정"}</span></p></div>
+        <div><strong>{game.home.name}<small>홈</small></strong><p>투수 <span>{game.home.startingPitcher || "미정"}</span></p></div>
       </div>
     </div>
     <div className="kbo-fixture-venue"><Icon name="pin" size={15} /><span>{game.stadium}</span></div>

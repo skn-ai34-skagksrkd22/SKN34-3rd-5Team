@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .admin_views import AdminPostDetail, AdminPostList, AdminReportAction, AdminReportList
 from .drafts import CommunityDraftDetailView, CommunityDraftListCreateView
 from .images import CommunityImageDetailView, CommunityImageUploadView
 from .interactions import CommentDetailView, CommentListCreateView, ReportCreateView, VoteView
@@ -8,6 +9,10 @@ from .publishing import CommunityDraftPublishView
 from .views import CommunityPostDetailView, CommunityPostListCreateView
 
 urlpatterns = [
+    path("admin/posts/", AdminPostList.as_view(), name="community-admin-posts"),
+    path("admin/posts/<str:source_id>/", AdminPostDetail.as_view(), name="community-admin-post"),
+    path("admin/reports/", AdminReportList.as_view(), name="community-admin-reports"),
+    path("admin/reports/<int:report_id>/action/", AdminReportAction.as_view(), name="community-admin-report-action"),
     path("drafts/", CommunityDraftListCreateView.as_view(), name="community-draft-list"),
     path("drafts/<uuid:draft_id>/", CommunityDraftDetailView.as_view(), name="community-draft-detail"),
     path("images/", CommunityImageUploadView.as_view(), name="community-image-upload"),

@@ -56,3 +56,29 @@ export function Baseball({ className = "" }: { className?: string }) {
     </svg>
   );
 }
+
+// Chat assistant mark: a small robot (antenna, side ears, face screen, chin plate) wearing a baseball cap, brim to the right.
+export function CapBot({ size = 26, ...props }: SVGProps<SVGSVGElement> & { size?: number }) {
+  const face = "#eef4ff";
+  return <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true" {...props}>
+    <circle cx="14.7" cy="1.9" r="1.1" stroke="currentColor" strokeWidth="0.9" />
+    <path d="M14.7 3v2.6" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
+    <ellipse cx="14.7" cy="5.6" rx="1.1" ry="0.6" fill="currentColor" />
+    <rect x="1.4" y="18.4" width="2.7" height="7" rx="1.1" fill="currentColor" />
+    <rect x="26.1" y="18.4" width="2.7" height="7" rx="1.1" fill="currentColor" />
+    <rect x="8.4" y="27.4" width="13.4" height="4" rx="0.9" fill="currentColor" />
+    <rect x="10.2" y="28.1" width="9.6" height="2.2" rx="0.3" fill={face} />
+    <circle cx="10.9" cy="28.8" r="0.28" fill="currentColor" />
+    <circle cx="10.9" cy="29.7" r="0.28" fill="currentColor" />
+    <circle cx="19.1" cy="28.8" r="0.28" fill="currentColor" />
+    <circle cx="19.1" cy="29.7" r="0.28" fill="currentColor" />
+    <rect x="4.6" y="14.6" width="21" height="14.6" rx="4.6" fill="currentColor" />
+    <rect x="6.1" y="16.5" width="18" height="11.2" rx="3" fill={face} />
+    <ellipse cx="10.2" cy="21.2" rx="1.55" ry="1.85" fill="currentColor" />
+    <ellipse cx="20.1" cy="21.2" rx="1.55" ry="1.85" fill="currentColor" />
+    <path d="M12.8 23.7q2.3 1.7 4.6 0" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" />
+    <path d="M4.7 15.4C4.7 9.6 9 5.8 14.6 5.8c4.4 0 7.9 2.4 9.4 5.8l4.9-.8c2.3-.3 2.9 2.7.6 2.9l-6.1.2c-3.9.1-8.5.8-12.9 1.5Z" fill="currentColor" />
+    <path d="M14.6 6.3c-2 2.4-3.1 5.3-3.3 8.4" stroke={face} strokeWidth="0.8" strokeLinecap="round" />
+    <path d="M11.3 14.7c3.7-1.2 7.7-2 11.6-2.2" stroke={face} strokeWidth="0.7" strokeLinecap="round" />
+  </svg>;
+}

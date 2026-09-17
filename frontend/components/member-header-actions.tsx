@@ -26,8 +26,14 @@ export function MemberHeaderActions() {
         <Link href="/mypage?tab=likes" onClick={() => setOpen(false)}>찜한 코스</Link>
         <Link href="/mypage?tab=posts" onClick={() => setOpen(false)}>내가 쓴 글</Link>
         <hr className="member-menu-divider" />
+        {(user.is_staff || user.is_superuser) && <>
+          {/* 관리자 계정은 관리 메뉴가 추가되고, 회원 정보는 로그아웃 바로 위에 둔다 */}
+          <Link href="/mypage?tab=members" onClick={() => setOpen(false)}>회원 관리</Link>
+          <Link href="/mypage?tab=manage-posts" onClick={() => setOpen(false)}>게시글 관리</Link>
+          <Link href="/mypage?tab=reports" onClick={() => setOpen(false)}>신고 관리</Link>
+          <hr className="member-menu-divider" />
+        </>}
         <Link href="/mypage?tab=profile" onClick={() => setOpen(false)}>회원 정보</Link>
-        {user.is_staff && <Link href="/admin" onClick={() => setOpen(false)}>관리자</Link>}
         <hr className="member-menu-divider" />
         <button type="button" onClick={async () => { setOpen(false); setError(""); try { const response = await logoutMember(); const result = await response.json().catch(() => ({})); setUser(null); router.push("/"); if (!response.ok && response.status !== 401) setError(memberError(result, "서버의 로그아웃 여부를 확인하지 못했어요.")); } catch { setUser(null); router.push("/"); setError("서버의 로그아웃 여부를 확인하지 못했어요."); } }}>로그아웃</button>
       </nav>}

@@ -1,0 +1,267 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "화면 흐름 (UX Flow)",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "course",
+        "label": "코스 만들기",
+        "focus": [
+          "home",
+          "ask",
+          "course",
+          "map",
+          "login",
+          "save",
+          "routes"
+        ],
+        "note": "질문 한 번으로 코스를 받고 지도에서 확인한 뒤 저장"
+      },
+      {
+        "id": "qa",
+        "label": "궁금한 것 묻기",
+        "focus": [
+          "home",
+          "ask",
+          "answer"
+        ],
+        "note": "반입 · 주차 · 좌석 질문은 근거 등급과 함께 답변"
+      },
+      {
+        "id": "browse",
+        "label": "둘러보기",
+        "focus": [
+          "home",
+          "schedule",
+          "stadium",
+          "community"
+        ],
+        "note": "일정 · 순위, 구장 가이드, 커뮤니티"
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "메인 · 챗봇 · 회원"
+    },
+    {
+      "id": "course",
+      "label": "직관 코스"
+    },
+    {
+      "id": "info",
+      "label": "정보 · 커뮤니티"
+    }
+  ],
+  "mainPath": [
+    "home",
+    "ask",
+    "course",
+    "map",
+    "login",
+    "save",
+    "routes"
+  ],
+  "nodes": [
+    {
+      "id": "home",
+      "lane": "main",
+      "col": 0,
+      "type": "frontend",
+      "label": "메인 화면",
+      "sublabel": "챗봇 입력 · 오늘 경기",
+      "width": 132
+    },
+    {
+      "id": "ask",
+      "lane": "main",
+      "col": 1,
+      "type": "frontend",
+      "label": "질문",
+      "sublabel": "구장 선택 + 질문",
+      "width": 132
+    },
+    {
+      "id": "answer",
+      "lane": "main",
+      "col": 2,
+      "type": "backend",
+      "label": "텍스트 답변",
+      "sublabel": "근거 등급 안내",
+      "width": 132
+    },
+    {
+      "id": "course",
+      "lane": "course",
+      "col": 2,
+      "type": "backend",
+      "label": "코스 답변",
+      "sublabel": "식당 → 구장 → 카페",
+      "width": 132
+    },
+    {
+      "id": "map",
+      "lane": "course",
+      "col": 3,
+      "type": "frontend",
+      "label": "지도 자동 표시",
+      "sublabel": "방문 순서 · 이동 시간",
+      "width": 132
+    },
+    {
+      "id": "login",
+      "lane": "main",
+      "col": 4,
+      "type": "security",
+      "label": "로그인",
+      "sublabel": "JWT",
+      "width": 132
+    },
+    {
+      "id": "save",
+      "lane": "course",
+      "col": 4,
+      "type": "database",
+      "label": "코스 저장",
+      "sublabel": "이름 붙여 저장",
+      "width": 132
+    },
+    {
+      "id": "routes",
+      "lane": "course",
+      "col": 5,
+      "type": "frontend",
+      "label": "코스 목록",
+      "sublabel": "검색 · 좋아요 · 공유",
+      "width": 132
+    },
+    {
+      "id": "schedule",
+      "lane": "info",
+      "col": 1,
+      "type": "frontend",
+      "label": "일정 · 순위",
+      "sublabel": "날짜 · 구단 필터",
+      "width": 132
+    },
+    {
+      "id": "stadium",
+      "lane": "info",
+      "col": 2,
+      "type": "frontend",
+      "label": "구장 · 관람 가이드",
+      "sublabel": "9개 구장 · 기초 규칙",
+      "width": 132
+    },
+    {
+      "id": "community",
+      "lane": "info",
+      "col": 5,
+      "type": "frontend",
+      "label": "커뮤니티",
+      "sublabel": "게시판 · 승부 예측",
+      "width": 132
+    }
+  ],
+  "edges": [
+    {
+      "id": "type",
+      "from": "home",
+      "to": "ask",
+      "label": "질문 입력",
+      "variant": "emphasis"
+    },
+    {
+      "id": "qa",
+      "from": "ask",
+      "to": "answer",
+      "label": "일반 질문",
+      "role": "branch"
+    },
+    {
+      "id": "plan",
+      "from": "ask",
+      "to": "course",
+      "label": "코스 요청",
+      "variant": "emphasis"
+    },
+    {
+      "id": "draw",
+      "from": "course",
+      "to": "map",
+      "variant": "emphasis"
+    },
+    {
+      "id": "want-save",
+      "from": "map",
+      "to": "login",
+      "label": "저장하기",
+      "variant": "security"
+    },
+    {
+      "id": "logged-in",
+      "from": "login",
+      "to": "save",
+      "label": "로그인 완료",
+      "variant": "emphasis"
+    },
+    {
+      "id": "list",
+      "from": "save",
+      "to": "routes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "browse-schedule",
+      "from": "home",
+      "to": "schedule",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "browse-stadium",
+      "from": "schedule",
+      "to": "stadium",
+      "variant": "dashed"
+    },
+    {
+      "id": "share",
+      "from": "routes",
+      "to": "community",
+      "label": "공유",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "핵심 흐름",
+      "items": [
+        "질문 한 번 → 코스 → 지도 → 저장",
+        "코스는 답변과 동시에 지도에 표시"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "로그인 없이도",
+      "items": [
+        "게스트 채팅 · 코스 보기 가능",
+        "저장 · 공유 때만 로그인"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "반응형",
+      "items": [
+        "모바일 하단 탐색",
+        "카드 1 · 2 · 3열"
+      ]
+    }
+  ]
+}

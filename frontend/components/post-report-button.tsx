@@ -10,6 +10,7 @@ type ReportReason = "spam" | "abuse" | "inappropriate" | "privacy" | "other";
 export function PostReportButton({ postNumber, postId }: { postNumber: string; postId?: string }) {
   const { user } = useMemberAuth();
   const actorId = user?.id ?? null;
+  if (!actorId) return null;
   return <PostReportButtonContent key={`${postId ?? postNumber}:${actorId ?? "anonymous"}`} postNumber={postNumber} postId={postId} actorId={actorId} />;
 }
 

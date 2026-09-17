@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "직관 코스 추천 순서",
+    "viewBox": [
+      1080,
+      630
+    ],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "views": [
+      {
+        "id": "request",
+        "label": "요청",
+        "focus": [
+          "user",
+          "agent",
+          "course"
+        ],
+        "note": "사용자 문장이 코스 도구로 그대로 전달됨"
+      },
+      {
+        "id": "candidates",
+        "label": "후보 찾기",
+        "focus": [
+          "course",
+          "store",
+          "llm"
+        ],
+        "note": "경기 시간을 찾고, 경기 전 · 후 후보를 벡터 검색"
+      },
+      {
+        "id": "pick-and-map",
+        "label": "고르기 · 지도",
+        "focus": [
+          "course",
+          "llm",
+          "store",
+          "agent",
+          "map",
+          "user"
+        ],
+        "note": "LLM은 키만 고르고 좌표 · 주소는 DB 값으로 조립"
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "사용자",
+      "sublabel": "채팅 화면"
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "assistant agent",
+      "sublabel": "plan_course 도구"
+    },
+    {
+      "id": "course",
+      "type": "backend",
+      "label": "course 도메인",
+      "sublabel": "코드 계산 중심"
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "야구 DB · pgvector",
+      "sublabel": "경기 · 장소 후보"
+    },
+    {
+      "id": "llm",
+      "type": "cloud",
+      "label": "OpenAI",
+      "sublabel": "임베딩 · 키 선택"
+    },
+    {
+      "id": "map",
+      "type": "frontend",
+      "label": "프론트 지도",
+      "sublabel": "카카오맵"
+    }
+  ],
+  "segments": [
+    {
+      "from": 162,
+      "to": 216,
+      "label": "요청"
+    },
+    {
+      "from": 220,
+      "to": 356,
+      "label": "후보 찾기"
+    },
+    {
+      "from": 360,
+      "to": 412,
+      "label": "고르기 (LLM 1회)"
+    },
+    {
+      "from": 416,
+      "to": 552,
+      "label": "조립 · 지도 표시"
+    }
+  ],
+  "messages": [
+    {
+      "id": "ask",
+      "from": "user",
+      "to": "agent",
+      "y": 176,
+      "label": "친구랑 잠실 경기 전후 코스",
+      "variant": "emphasis"
+    },
+    {
+      "id": "plan",
+      "from": "agent",
+      "to": "course",
+      "y": 204,
+      "label": "plan_course(요청 문장)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "find-game",
+      "from": "course",
+      "to": "store",
+      "y": 232,
+      "label": "경기 날짜 · 시작 시각",
+      "variant": "default"
+    },
+    {
+      "id": "game",
+      "from": "store",
+      "to": "course",
+      "y": 260,
+      "label": "경기 정보",
+      "variant": "return"
+    },
+    {
+      "id": "embed",
+      "from": "course",
+      "to": "llm",
+      "y": 288,
+      "label": "경기 전 · 후 쿼리 임베딩",
+      "variant": "default"
+    },
+    {
+      "id": "search",
+      "from": "course",
+      "to": "store",
+      "y": 316,
+      "label": "카테고리별 벡터 검색",
+      "variant": "default"
+    },
+    {
+      "id": "cands",
+      "from": "store",
+      "to": "course",
+      "y": 344,
+      "label": "동행 · 반경으로 거른 후보",
+      "variant": "return"
+    },
+    {
+      "id": "choose",
+      "from": "course",
+      "to": "llm",
+      "y": 372,
+      "label": "후보 P1..Pn + 방위 · 거리",
+      "variant": "emphasis"
+    },
+    {
+      "id": "keys",
+      "from": "llm",
+      "to": "course",
+      "y": 400,
+      "label": "place_key · 이유 (JSON)",
+      "variant": "return"
+    },
+    {
+      "id": "assemble",
+      "from": "course",
+      "to": "store",
+      "y": 428,
+      "label": "키 → 이름 · 좌표 · 주소",
+      "variant": "default"
+    },
+    {
+      "id": "places",
+      "from": "store",
+      "to": "course",
+      "y": 456,
+      "label": "places[]",
+      "variant": "return"
+    },
+    {
+      "id": "result",
+      "from": "course",
+      "to": "agent",
+      "y": 484,
+      "label": "답변 + places + 저장 payload",
+      "variant": "return"
+    },
+    {
+      "id": "show",
+      "from": "agent",
+      "to": "map",
+      "y": 512,
+      "label": "places 전달",
+      "variant": "emphasis"
+    },
+    {
+      "id": "render",
+      "from": "map",
+      "to": "user",
+      "y": 540,
+      "label": "지도 자동 표시 · 저장 버튼",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "agent",
+      "from": 172,
+      "to": 516,
+      "type": "backend"
+    },
+    {
+      "participant": "course",
+      "from": 200,
+      "to": 488,
+      "type": "backend"
+    },
+    {
+      "participant": "store",
+      "from": 228,
+      "to": 264,
+      "type": "database"
+    },
+    {
+      "participant": "store",
+      "from": 312,
+      "to": 348,
+      "type": "database"
+    },
+    {
+      "participant": "store",
+      "from": 424,
+      "to": 460,
+      "type": "database"
+    },
+    {
+      "participant": "llm",
+      "from": 284,
+      "to": 292,
+      "type": "cloud"
+    },
+    {
+      "participant": "llm",
+      "from": 368,
+      "to": 404,
+      "type": "cloud"
+    },
+    {
+      "participant": "map",
+      "from": 508,
+      "to": 544,
+      "type": "frontend"
+    }
+  ]
+}

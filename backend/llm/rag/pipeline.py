@@ -72,10 +72,11 @@ from . import dispatcher
 
 _ROLE = {"human": "user", "ai": "assistant", "user": "user", "assistant": "assistant"}
 _STADIUM_PREFIX = re.compile(r"^\s*\[선택한 구장:\s*([^\]]+)\]\s*")   # 프론트가 붙이는 접두어
+# 코스 작성 화면에서 지도에 출발지를 찍으면 붙는 접두어: [출발지: 37.51234,127.07123]
+_ORIGIN_PREFIX = re.compile(r"^\s*\[출발지:\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*\]\s*")
 # dispatcher 에 course 가 들어오기 전/후 둘 다에서 돌게 한다
 _HAS_INTENT = "intent" in inspect.signature(dispatcher.answer).parameters
-
-STREAM_CHUNK = 24          # RAG 답은 한 번에 완성되므로 이만큼씩 끊어 흘린다 (화면 타이핑 효과)
+_HAS_ORIGIN = "origin" in inspect.signature(dispatcher.answer).parameters
 
 # 이번 요청의 RAG 결과를 뷰가 꺼내 쓰라고 잠깐 놔두는 자리.
 # 체인은 문자열만 돌려주는데(성호 규격), 뷰는 places·coursePayload 도 내려줘야 해서 필요하다.
@@ -127,12 +128,25 @@ def use_rag() -> bool:
     return not _running_tests()
 
 
+def split_context_prefix(question: str) -> tuple[str, Optional[str], Optional[dict]]:
+    """'[선택한 구장: 잠실야구장][출발지: 37.5,127.0]\\n코스 짜줘' → ('코스 짜줘', '잠실야구장', {"lat": 37.5, "lng": 127.0})
+
+    두 접두어는 어느 순서로 와도 되고, 없는 것은 None 이다.
+    """
+    text, stadium, origin = question or "", None, None
+    while True:
+        if stadium is None and (m := _STADIUM_PREFIX.match(text)):
+            stadium, text = m.group(1).strip(), text[m.end():]
+        elif origin is None and (m := _ORIGIN_PREFIX.match(text)):
+            origin, text = {"lat": float(m.group(1)), "lng": float(m.group(2))}, text[m.end():]
+        else:
+            return text.strip(), stadium, origin
+
+
 def split_stadium_prefix(question: str) -> tuple[str, Optional[str]]:
-    """'[선택한 구장: 잠실야구장]\\n잠실 주차 얼마야?' → ('잠실 주차 얼마야?', '잠실야구장')"""
-    m = _STADIUM_PREFIX.match(question or "")
-    if not m:
-        return (question or "").strip(), None
-    return question[m.end():].strip(), m.group(1).strip()
+    """'[선택한 구장: 잠실야구장]\\n잠실 주차 얼마야?' → ('잠실 주차 얼마야?', '잠실야구장') · 출발지 접두어도 함께 뗀다"""
+    text, stadium, _ = split_context_prefix(question)
+    return text, stadium
 
 
 def normalize_history(history) -> list[dict]:
@@ -169,14 +183,17 @@ def _tag(result: dict, extra: dict):
 
 @traceable(run_type="chain", name="kbo_rag.answer")
 def answer(question: str, history=None, stadium_name: Optional[str] = None,
-           intent: Optional[str] = None) -> dict:
+           intent: Optional[str] = None, origin: Optional[dict] = None) -> dict:
     """RAG 실행. 반환 {"answer", "sources", "route", "places", "coursePayload", "question"}
 
     question 키에는 구장 접두어를 뗀 질문이 들어간다 (대화 기록에 저장할 때 쓰라고).
     """
-    q, prefixed = split_stadium_prefix(question)
+    q, prefixed, prefixed_origin = split_context_prefix(question)
     stadium_name = stadium_name or prefixed
+    origin = origin or prefixed_origin
     kwargs = {"intent": intent} if _HAS_INTENT else {}
+    if origin and _HAS_ORIGIN:
+        kwargs["origin"] = origin
     result = dispatcher.answer(q, history=normalize_history(history), stadium_name=stadium_name, **kwargs)
     result.setdefault("places", [])
     result.setdefault("coursePayload", None)
@@ -192,8 +209,7 @@ class RagChatChain(Runnable[dict, str]):
     ChatService.invoke_with_messages 는 .invoke() 를,
     ChatService.stream_with_history 는 .stream() 을 부른다 — 둘 다 여기로 온다.
 
-    RAG 는 답을 한 번에 만들기 때문에 .stream() 은 완성된 답을 잘라서 흘린다.
-    (화면에는 똑같이 한 글자씩 찍히고, 프론트 SSE 계약도 그대로다)
+    .stream() 은 마지막 provider 모델의 실제 text delta 만 흘린다.
     """
 
     name = "kbo_rag_chain"
@@ -201,15 +217,21 @@ class RagChatChain(Runnable[dict, str]):
     @staticmethod
     def _args(inputs: Any) -> dict:
         if isinstance(inputs, str):
-            return {"question": inputs, "history": None, "stadium_name": None, "intent": None}
+            question, stadium_name, origin = split_context_prefix(inputs)
+            return {"question": question, "history": [], "stadium_name": stadium_name, "intent": None, "origin": origin}
         inputs = inputs or {}
+        # 스트리밍 경로도 출발지 접두어를 잃지 않게 구장·출발지를 함께 뗀다
+        question, prefixed_stadium, prefixed_origin = split_context_prefix(inputs.get("question") or "")
         return {
-            "question": inputs.get("question") or "",
+            "question": question,
             # chat_history 는 성호 체인 키, history 는 우리 키 — 둘 다 받는다
-            "history": inputs.get("chat_history") if inputs.get("chat_history") is not None
-            else inputs.get("history"),
-            "stadium_name": inputs.get("stadium_name"),
+            "history": normalize_history(
+                inputs.get("chat_history") if inputs.get("chat_history") is not None
+                else inputs.get("history")
+            ),
+            "stadium_name": inputs.get("stadium_name") or prefixed_stadium,
             "intent": inputs.get("intent"),
+            "origin": inputs.get("origin") or prefixed_origin,
         }
 
     def detail(self, inputs: Any) -> dict:
@@ -223,9 +245,8 @@ class RagChatChain(Runnable[dict, str]):
 
     def stream(self, input: Any, config: Optional[RunnableConfig] = None,
                **kwargs) -> Iterator[str]:
-        text = self.invoke(input, config, **kwargs)
-        for i in range(0, len(text), STREAM_CHUNK):
-            yield text[i:i + STREAM_CHUNK]
+        result = yield from dispatcher.stream(**self._args(input))
+        _LAST.set(result)
 
 
 rag_chain = RagChatChain()

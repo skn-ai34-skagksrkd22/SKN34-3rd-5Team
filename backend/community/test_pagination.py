@@ -13,7 +13,7 @@ class CommunityPostPaginationTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.data, list)
-        self.assertEqual(len(response.data), 350)
+        self.assertEqual(len(response.data), 352)
 
     def test_page_boundaries_use_default_page_size(self):
         first = self.client.get("/community/posts/?page=1")
@@ -21,8 +21,8 @@ class CommunityPostPaginationTests(APITestCase):
         last = self.client.get("/community/posts/?page=18")
         missing = self.client.get("/community/posts/?page=19")
 
-        self.assertEqual((first.status_code, first.data["count"], len(first.data["results"])), (200, 350, 20))
-        self.assertEqual((last.status_code, last.data["count"], len(last.data["results"])), (200, 350, 10))
+        self.assertEqual((first.status_code, first.data["count"], len(first.data["results"])), (200, 352, 20))
+        self.assertEqual((last.status_code, last.data["count"], len(last.data["results"])), (200, 352, 12))
         self.assertEqual(urlsplit(first.data["next"]).path, "/api/community/posts/")
         self.assertEqual(parse_qs(urlsplit(first.data["next"]).query)["page"], ["2"])
         self.assertTrue(

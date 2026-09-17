@@ -255,3 +255,11 @@ test("user cancellation reaches fetch and returns a distinct cancellation error"
   controller.abort();
   await assert.rejects(request, chatError(499));
 });
+
+test("map origin is kept as plain coordinates and invalid origins are rejected", () => {
+  const result = parseChatRequest({ ...question, context: { stadium: "잠실", origin: { lat: 37.51, lng: 127.07, label: "injected" } } });
+  assert.deepEqual(result.context, { stadium: "잠실", origin: { lat: 37.51, lng: 127.07 } });
+  for (const origin of [null, [], { lat: "37.5", lng: 127 }, { lat: Number.NaN, lng: 127 }, { lat: 91, lng: 127 }, { lat: 37.5 }]) {
+    assert.throws(() => parseChatRequest({ ...question, context: { origin } }), chatError(400));
+  }
+});

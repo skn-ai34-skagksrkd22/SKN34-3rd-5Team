@@ -81,6 +81,7 @@ def _normalize(upload):
 def _published(image):
     return bool(
         image.post_id
+        or image.course_id
         or image.draft_id
         and image.draft.published_post_id
     )

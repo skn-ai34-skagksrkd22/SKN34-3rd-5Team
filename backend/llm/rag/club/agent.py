@@ -17,7 +17,7 @@ from . import structured
 from .prompts import FEW_SHOT, FIXED, SYSTEM, WARN_SUFFIX
 from .retrieval import date_tokens, embed, keyword_rerank, search
 from .router import PLACE_ALIAS, TEAM_ALIAS, detect_categories, detect_stadium
-from ..domain_tools import invoke as invoke_domain_tool, run_model
+from ..domain_tools import invoke as invoke_domain_tool, run_model, visible_text
 
 READY = True
 LLM_MODEL = os.getenv("LLM_MODEL") or "gpt-5.6-luna"
@@ -35,7 +35,7 @@ def llm():
     """LangChain ChatOpenAI — 서버 기동 후 한 번만 만든다 (chat_service.py 와 같은 방식)"""
     global _llm
     if _llm is None:
-        _llm = ChatOpenAI(model=LLM_MODEL, temperature=0, timeout=25, max_retries=0, reasoning_effort="none")
+        _llm = ChatOpenAI(model=LLM_MODEL, temperature=0, timeout=25, max_retries=0, reasoning_effort="medium", use_responses_api=True)
     return _llm
 
 
@@ -47,7 +47,7 @@ def _to_lc(messages):
 def call_llm(messages):
     t0 = time.perf_counter()
     out = run_model(llm(), _to_lc(messages), "club").content
-    text = out if isinstance(out, str) else "".join(p.get("text", "") for p in out if isinstance(p, dict))
+    text = visible_text(out)
     return text or "", (time.perf_counter() - t0) * 1000
 
 
@@ -59,8 +59,7 @@ def answer_community_tools(question, history, timing, route):
     t0 = time.perf_counter()
     response = run_model(llm(), messages, "club", require_first_tool=True)
     timing["tool_ms"] = round((time.perf_counter() - t0) * 1000)
-    text = response.content if isinstance(response.content, str) else "".join(
-        part.get("text", "") for part in response.content if isinstance(part, dict))
+    text = visible_text(response.content)
     route.append("domain_tools:community")
     return {"answer": text, "sources": [], "route": " ".join(route), "timing": timing}
 

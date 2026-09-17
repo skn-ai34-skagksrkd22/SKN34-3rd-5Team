@@ -14,6 +14,9 @@ from django.core.cache import cache
 from django.test import TestCase, TransactionTestCase
 from django.urls import Resolver404, resolve, reverse
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from community.models import CommunityImage
 
 from .models import Course, CourseReaction, CourseStop, CourseView
 from .views import CourseWriteThrottle
@@ -42,6 +45,19 @@ class CourseApiTests(TestCase):
     def setUp(self):
         cache.clear()
         self.client = APIClient()
+        self.member = get_user_model().objects.create_user(username="course-test-member", password="test-pass")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(self.member).access_token}")
+
+    def test_guests_can_read_but_cannot_create_edit_or_delete_courses(self):
+        created = self.create_course()
+        guest = APIClient()
+        url = f"/courses/{created.data['id']}/"
+        self.assertEqual(guest.get("/courses/").status_code, 200)
+        self.assertEqual(guest.get(url).status_code, 200)
+        self.assertEqual(guest.post("/courses/", course_data(), format="json").status_code, 401)
+        self.assertEqual(guest.patch(url, {"title": "변경"}, format="json", HTTP_X_COURSE_EDIT_TOKEN=created.data["editToken"]).status_code, 401)
+        self.assertEqual(guest.delete(url, HTTP_X_COURSE_EDIT_TOKEN=created.data["editToken"]).status_code, 401)
+        self.assertEqual(Course.objects.get(pk=created.data["id"]).title, course_data()["title"])
 
     def create_course(self):
         response = self.client.post("/courses/", course_data(), format="json")
@@ -88,7 +104,7 @@ class CourseApiTests(TestCase):
         course = Course.objects.get(pk=created.data["id"])
         reaction_url = f"/courses/{course.pk}/reaction/"
         view_url = f"/courses/{course.pk}/view/"
-        self.assertEqual(self.client.get(reaction_url).status_code, 401)
+        self.assertEqual(APIClient().get(reaction_url).status_code, 401)
 
         user = get_user_model().objects.create_user(username="course-fan")
         self.client.force_authenticate(user)
@@ -102,6 +118,7 @@ class CourseApiTests(TestCase):
         self.assertEqual((removed.data, repeated_remove.data), ({"liked": False, "likes": 0}, {"liked": False, "likes": 0}))
 
         self.client.force_authenticate(user=None)
+        self.client.credentials()
         token = str(uuid.uuid4())
         invalid = self.client.post(view_url, HTTP_X_COURSE_VIEW_TOKEN="not-a-uuid")
         first_view = self.client.post(view_url, HTTP_X_COURSE_VIEW_TOKEN=token)
@@ -143,8 +160,54 @@ class CourseApiTests(TestCase):
             "POST", "/courses/", b"{}", content_type="text/plain", HTTP_ORIGIN="http://testserver",
         ).status_code, 415)
         self.assertEqual(self.client.generic(
-            "POST", "/courses/", b"x" * 64001, content_type="application/json", HTTP_ORIGIN="http://testserver",
+            "POST", "/courses/", b"x" * 256001, content_type="application/json", HTTP_ORIGIN="http://testserver",
         ).status_code, 413)
+
+    def test_story_format_round_trips_and_images_require_jwt_owner(self):
+        owner = get_user_model().objects.create_user(username="route-image-owner", password="test-pass")
+        other = get_user_model().objects.create_user(username="route-image-other", password="test-pass")
+        image = CommunityImage.objects.create(
+            owner=owner, object_key="community/test-course-image.jpg", content_type="image/jpeg",
+            size=8, width=1, height=1,
+        )
+        run = {"text": "경기 전 카페", "font": "serif", "size": 20, "color": "#246bf3",
+               "bold": True, "italic": False, "underline": False}
+        document = {"version": 1, "blocks": [
+            {"type": "paragraph", "align": "center", "runs": [run]},
+            {"type": "image", "id": str(image.pk)},
+        ]}
+        payload = course_data(content="경기 전 카페\n[이미지]", contentFormat="", contentDoc=document)
+        self.assertEqual(self.client.post("/courses/", payload, format="json").status_code, 400)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(other).access_token}")
+        self.assertEqual(self.client.post("/courses/", payload, format="json").status_code, 400)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(owner).access_token}")
+        created = self.client.post("/courses/", payload, format="json")
+        self.assertEqual(created.status_code, 201, created.data)
+        image.refresh_from_db()
+        self.assertEqual(str(image.course_id), created.data["id"])
+        detail = self.client.get(f"/courses/{created.data['id']}/")
+        self.assertEqual(detail.data["contentDoc"], document)
+        changed = self.client.patch(
+            f"/courses/{created.data['id']}/",
+            {"content": "경기 전 카페", "contentDoc": {"version": 1, "blocks": [document["blocks"][0]]}},
+            format="json", HTTP_X_COURSE_EDIT_TOKEN=created.data["editToken"],
+        )
+        self.assertEqual(changed.status_code, 200, changed.data)
+        image.refresh_from_db()
+        self.assertIsNone(image.course_id)
+
+    def test_styled_story_requires_jwt_even_without_images(self):
+        document = {"version": 1, "blocks": [{"type": "paragraph", "align": "right", "runs": [
+            {"text": "직관 준비", "font": "sans", "size": 16, "color": "#26354b",
+             "bold": False, "italic": True, "underline": False},
+        ]}]}
+        payload = course_data(content="직관 준비", contentFormat="", contentDoc=document)
+        self.assertEqual(APIClient().post("/courses/", payload, format="json").status_code, 401)
+        created = self.client.post("/courses/", payload, format="json")
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data["contentDoc"], document)
+        mismatch = self.client.post("/courses/", course_data(content="다른 글", contentFormat="", contentDoc=document), format="json")
+        self.assertEqual(mismatch.status_code, 400)
 
     def test_validation_rejects_invalid_course_shapes(self):
         invalid = (
@@ -313,7 +376,7 @@ class CourseSampleTests(TestCase):
 
     def test_samples_are_read_only_and_can_be_cloned_as_ordinary_courses(self):
         sample = Course.objects.get(source_id="fan-sajik-date")
-        self.assertEqual(APIClient().patch(f"/courses/{sample.pk}/", {"title": "변경"}, format="json", HTTP_X_COURSE_EDIT_TOKEN="wrong").status_code, 403)
+        self.assertEqual(APIClient().patch(f"/courses/{sample.pk}/", {"title": "변경"}, format="json", HTTP_X_COURSE_EDIT_TOKEN="wrong").status_code, 401)
         payload = course_data(
             title=sample.title,
             stadium=sample.stadium,
@@ -342,7 +405,10 @@ class CourseSampleTests(TestCase):
         )
         payload.pop("startLat")
         payload.pop("startLng")
-        response = APIClient().post("/courses/", payload, format="json")
+        member = get_user_model().objects.create_user(username="sample-clone-member", password="test-pass")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(member).access_token}")
+        response = client.post("/courses/", payload, format="json")
         self.assertEqual(response.status_code, 201, response.data)
         clone = Course.objects.get(pk=response.data["id"])
         self.assertFalse(clone.is_sample)
@@ -409,7 +475,10 @@ class CourseSampleMigrationTests(TransactionTestCase):
         )
         CourseStop.objects.create(course=custom, position=0, name="사용자 장소", lat=37.5, lng=127.1, category="카페")
         MigrationExecutor(connection).migrate([("travel", "0003_course_sample_fields")])
-        MigrationExecutor(connection).migrate([("travel", "0005_course_engagement")])
+        MigrationExecutor(connection).migrate([
+            ("travel", "0006_merge_course_engagement_content_doc"),
+            ("community", "0005_communitypostimage_course"),
+        ])
         custom.refresh_from_db()
         self.assertEqual(custom.edit_token_hash, "custom-hash")
         self.assertEqual(list(custom.stops.values_list("name", flat=True)), ["사용자 장소"])

@@ -266,3 +266,50 @@
   .writer-spinner, .writer-skeleton { animation: none; }
   .writer-stops li { transition: none; }
 }
+
+/* 사용 가이드 (spotlight onboarding) */
+.writer-page-heading { align-items: flex-start; }
+.writer-heading-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.writer-guide-button { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; border: 1px solid #cfe0ff; border-radius: 10px; background: #eef4ff; color: #2465ec; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.writer-guide-button:hover { background: #e2ecff; box-shadow: 0 4px 12px #2465ec1f; }
+.writer-guide-button:focus-visible { outline: 2px solid #2465ec; outline-offset: 2px; }
+.driver-popover.route-guide-popover { min-width: 280px; max-width: 340px; padding: 20px 20px 16px; border-radius: 16px; background: #fff; color: #18263b; font-family: inherit; box-shadow: 0 18px 50px #0b142440; }
+.driver-popover.route-guide-popover .driver-popover-title { font-size: 18px; font-weight: 800; letter-spacing: -.3px; line-height: 1.4; }
+.driver-popover.route-guide-popover .driver-popover-description { margin-top: 8px; word-break: keep-all; font-size: 14px; line-height: 1.65; color: #4b5b73; }
+.driver-popover.route-guide-popover .driver-popover-footer { margin-top: 16px; }
+.driver-popover.route-guide-popover .driver-popover-footer button { padding: 8px 16px; border: 0; border-radius: 9px; background: #2465ec; color: #fff; font: inherit; font-size: 14px; font-weight: 700; text-shadow: none; }
+.driver-popover.route-guide-popover .driver-popover-footer button:hover { background: #1b56cf; }
+.driver-popover.route-guide-popover .driver-popover-close-btn { color: #8a97ab; }
+.driver-popover.route-guide-popover .driver-popover-close-btn:hover { color: #18263b; }
+@media (max-width: 560px) { .writer-heading-actions { flex-direction: row; align-items: center; } }
+
+.route-guide-stadium-list { position: absolute; z-index: 9000; max-height: 360px; overflow-y: auto; padding: 6px; border: 1px solid #dce5f1; border-radius: 12px; background: #fff; box-shadow: 0 12px 30px #0b14242e; }
+.route-guide-stadium-item { padding: 10px 12px; border-radius: 8px; color: #18263b; font-size: 14px; line-height: 1.4; }
+.route-guide-stadium-item[aria-disabled="true"] { color: #9aa6b8; cursor: default; }
+.route-guide-stadium-item[aria-selected="true"] { font-weight: 700; }
+#route-guide-stadium-target { background: #eef4ff; color: #2465ec; font-weight: 700; cursor: pointer; }
+#route-guide-stadium-target:hover, #route-guide-stadium-target:focus-visible { background: #e2ecff; outline: none; }
+
+.route-guide-dashed { outline: 2px dashed #2465ec; outline-offset: 5px; animation: route-guide-dash 1.6s ease-in-out infinite; }
+@keyframes route-guide-dash { 50% { outline-color: #2465ec66; } }
+@media (prefers-reduced-motion: reduce) { .route-guide-dashed { animation: none; } }
+.driver-popover.route-guide-popover.route-guide-corner { position: fixed; top: var(--route-guide-top) !important; left: var(--route-guide-left) !important; right: auto !important; bottom: auto !important; }
+.driver-popover.route-guide-popover.route-guide-corner .driver-popover-arrow { display: none; }
+#route-guide-exit { position: fixed; top: 18px; right: 18px; z-index: 1000000001; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: #ffffffe6; color: #18263b; font-size: 26px; line-height: 1; cursor: pointer; pointer-events: auto; box-shadow: 0 8px 24px #0b142440; }
+#route-guide-exit:hover, #route-guide-exit:focus-visible { background: #fff; outline: 2px solid #2465ec; }
+.route-guide-save-dialog { position: fixed; inset: 0; z-index: 2; height: fit-content; background: #fff; }
+.route-guide-save-dialog .button { pointer-events: none; }
+.driver-popover.route-guide-popover.route-guide-final .driver-popover-footer { justify-content: flex-end; }
+.driver-popover.route-guide-popover.route-guide-final .driver-popover-prev-btn { display: none; }
+/* 가이드 샘플 화면: 실제 작성 화면 위를 덮는 같은 화면 (driver.js 오버레이 z-index 10000 아래) */
+.route-guide-sandbox { position: fixed; inset: 0; z-index: 9000; overflow-y: auto; overscroll-behavior: contain; background: var(--background, #fff); }
+.route-guide-sandbox-content { position: relative; min-height: 100%; }
+/* 마지막 말풍선: 캐릭터가 오른쪽에 서서 팔을 말풍선에 걸친다 */
+.driver-popover.route-guide-popover.route-guide-final { overflow: visible; translate: -80px 0; }
+.route-guide-mascot { position: absolute; top: -78px; left: calc(100% - 54px); z-index: 2; width: auto; max-width: none; height: 300px; pointer-events: none; user-select: none; filter: drop-shadow(0 10px 18px #0b142440); }
+.driver-popover.route-guide-popover.route-guide-final .driver-popover-footer { position: relative; z-index: 3; }
+@media (max-width: 900px) { .driver-popover.route-guide-popover.route-guide-final { translate: -60px 0; } .route-guide-mascot { height: 230px; top: -56px; left: calc(100% - 44px); } }
+@media (max-width: 640px) { .driver-popover.route-guide-popover.route-guide-final { translate: -50px 0; } .route-guide-mascot { height: 190px; top: -40px; left: calc(100% - 38px); } }
+/* 가이드 진행 중에는 사용자가 스크롤할 수 없다 (가이드의 scrollTo/scrollIntoView는 그대로 동작) */
+.route-guide-sandbox.is-guiding { overflow: hidden; }
+.route-guide-sandbox.is-guiding * { overscroll-behavior: none; }

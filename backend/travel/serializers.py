@@ -4,6 +4,9 @@ from django.db import transaction
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
+from community.models import CommunityImage
+from community.serializers import validate_content_doc
+
 from .models import Course, CourseStop
 
 
@@ -37,6 +40,7 @@ class CourseSerializer(serializers.ModelSerializer):
     isSample = serializers.BooleanField(source="is_sample", read_only=True)
     routeNumber = serializers.CharField(source="route_number", read_only=True)
     content = serializers.CharField(required=False, allow_blank=True, max_length=12000)
+    contentDoc = serializers.JSONField(source="content_doc", required=False, allow_null=True)
     contentFormat = serializers.ChoiceField(source="content_format", choices=("", "html"), required=False, allow_blank=True)
     startLat = FiniteFloatField(source="start_lat", min_value=-90, max_value=90, required=False, allow_null=True)
     startLng = FiniteFloatField(source="start_lng", min_value=-180, max_value=180, required=False, allow_null=True)
@@ -46,7 +50,7 @@ class CourseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Course
-        fields = ("id", "sampleId", "routeNumber", "title", "stadium", "description", "content", "contentFormat", "duration", "cover", "tags", "startLat", "startLng", "author", "likes", "views", "isSample", "createdAt", "updatedAt", "stops")
+        fields = ("id", "sampleId", "routeNumber", "title", "stadium", "description", "content", "contentDoc", "contentFormat", "duration", "cover", "tags", "startLat", "startLng", "author", "likes", "views", "isSample", "createdAt", "updatedAt", "stops")
         read_only_fields = ("id", "sampleId", "routeNumber", "description", "cover", "author", "likes", "views", "isSample", "createdAt", "updatedAt")
 
     def validate_title(self, value):
@@ -68,6 +72,14 @@ class CourseSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        if "content_doc" in attrs and attrs["content_doc"] is not None:
+            text, image_ids = validate_content_doc(attrs["content_doc"], self.context["request"].user,
+                                                   course=True, max_chars=12000)
+            if attrs.get("content", getattr(self.instance, "content", "")) != text:
+                raise serializers.ValidationError({"contentDoc": "본문 내용과 서식이 일치하지 않아요."})
+            self._image_ids = image_ids
+        elif "content" in attrs and self.instance and self.instance.content_doc is not None:
+            attrs["content_doc"] = None
         lat = attrs.get("start_lat", getattr(self.instance, "start_lat", None))
         lng = attrs.get("start_lng", getattr(self.instance, "start_lng", None))
         if (lat is None) != (lng is None):
@@ -88,6 +100,8 @@ class CourseSerializer(serializers.ModelSerializer):
         stops = validated_data.pop("stops")
         course = Course.objects.create(**validated_data)
         CourseStop.objects.bulk_create(CourseStop(course=course, **stop) for stop in stops)
+        if getattr(self, "_image_ids", None):
+            CommunityImage.objects.filter(id__in=self._image_ids, owner=self.context["request"].user).update(course=course)
         return course
 
     @transaction.atomic
@@ -99,6 +113,12 @@ class CourseSerializer(serializers.ModelSerializer):
         if stops is not None:
             instance.stops.all().delete()
             CourseStop.objects.bulk_create(CourseStop(course=instance, **stop) for stop in stops)
+        if hasattr(self, "_image_ids"):
+            CommunityImage.objects.filter(course=instance).exclude(id__in=self._image_ids).update(course=None)
+            if self._image_ids:
+                CommunityImage.objects.filter(id__in=self._image_ids, owner=self.context["request"].user).update(course=instance)
+        elif validated_data.get("content_doc", "not-updated") is None:
+            CommunityImage.objects.filter(course=instance).update(course=None)
         return instance
 
     def to_representation(self, instance):
@@ -143,6 +163,7 @@ class CourseCreateRequestSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=80)
     stadium = serializers.CharField(max_length=120)
     content = serializers.CharField(max_length=12000, required=False, allow_blank=True)
+    contentDoc = serializers.JSONField(required=False, allow_null=True)
     contentFormat = serializers.ChoiceField(choices=("", "html"), required=False, allow_blank=True)
     duration = serializers.CharField(max_length=80)
     tags = serializers.ListField(child=serializers.CharField())
@@ -169,6 +190,7 @@ class CourseResponseSerializer(serializers.Serializer):
     stadium = serializers.CharField()
     description = serializers.CharField()
     content = serializers.CharField()
+    contentDoc = serializers.JSONField(required=False, allow_null=True)
     contentFormat = serializers.ChoiceField(choices=("html",), required=False)
     duration = serializers.CharField()
     cover = serializers.CharField()

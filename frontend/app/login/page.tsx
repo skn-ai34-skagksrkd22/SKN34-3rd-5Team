@@ -5,7 +5,7 @@ import { saveMemberTokens } from "@/lib/member-auth-request";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { AuthDialog } from "@/components/auth-dialog";
 import { useAuthHydrated } from "@/components/auth-hydration";
-import { requestPasswordReset, requestUsername, signIn, updatePassword } from "@/lib/api/auth";
+import { getMemberUser, requestPasswordReset, requestUsername, signIn, updatePassword } from "@/lib/api/auth";
 
 type LoginErrors = { username?: string; password?: string };
 
@@ -73,7 +73,9 @@ export default function LoginPage() {
       const result = await signIn({ username: String(fields.get("username") ?? ""), password: String(fields.get("password") ?? "") });
       if (!result) throw new Error("로그인 응답을 확인하지 못했어요.");
       saveMemberTokens(result.access, result.refresh);
-      window.location.assign(new URLSearchParams(window.location.search).get("next") === "admin" ? "/admin" : "/routes/new");
+      // 관리자 계정은 관리 메뉴가 있는 마이페이지로, 그 외에는 메인으로 이동한다
+      const me = await getMemberUser().catch(() => null);
+      window.location.assign(new URLSearchParams(window.location.search).get("next") === "admin" ? "/admin" : me?.is_staff || me?.is_superuser ? "/mypage" : "/");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "로그인 서버에 연결하지 못했어요.");
     } finally { setBusy(false); }

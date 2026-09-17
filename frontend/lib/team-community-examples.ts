@@ -1,6 +1,6 @@
 import type { CommunityPostCategory } from "./community-post-category";
 
-// Original fictional fixtures. Topic references are documented in docs/COMMUNITY_EXAMPLES.md.
+// Original fictional fixtures. Topic references are documented in docs/references/COMMUNITY_EXAMPLES.md.
 type Example = { category: CommunityPostCategory; title: string; content: string };
 const originalTeamExamples: Record<string, Example[]> = {
   LG: [

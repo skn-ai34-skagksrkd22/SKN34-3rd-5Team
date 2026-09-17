@@ -107,7 +107,7 @@ function TeamBadge({ team, side }: { team: KboGame["home"]; side: "원정" | "�
     <div className="game-team">
       <TeamLogo code={team.code} name={team.name} className="team-mark" />
       <strong>{team.name}</strong>
-      <span className="game-starting-pitcher"><span>선발</span> {team.startingPitcher?.trim() || "미정"}</span>
+      <span className="game-starting-pitcher"><span>투수</span> {team.startingPitcher?.trim() || "미정"}</span>
       <small>{side}</small>
     </div>
   );

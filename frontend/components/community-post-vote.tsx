@@ -11,6 +11,7 @@ export function CommunityPostVote({ post }: { post: TeamCommunityPost }) {
   const { user } = useMemberAuth();
   const actorId = user?.id ?? null;
   const downvotes = "downvotes" in post && typeof post.downvotes === "number" ? post.downvotes : 0;
+  if (!actorId) return <div className={styles.vote} aria-label="게시글 추천 현황"><span>추천 {post.recommendations}</span><span>비추천 {downvotes}</span></div>;
   return <CommunityPostVoteContent key={`${post.id}:${actorId ?? "anonymous"}:${post.recommendations}:${downvotes}`} post={post} actorId={actorId} />;
 }
 

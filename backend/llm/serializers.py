@@ -1,7 +1,12 @@
+from datetime import timedelta
+
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .chat_service import ChatService
-from .models import ChatMessage, ChatSession
+from django.utils import timezone
+
+from .models import ChatMessage, ChatProgressEvent, ChatSession, ChatTurn
 
 
 MAX_HISTORY_MESSAGES = 12
@@ -130,6 +135,78 @@ class ChatErrorEventSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
+class ChatProgressEventSerializer(serializers.ModelSerializer):
+    turn_id = serializers.UUIDField()
+    sequence_no = serializers.IntegerField(min_value=1)
+    operation_id = serializers.UUIDField()
+    parent_operation_id = serializers.UUIDField(allow_null=True)
+    tool_name = serializers.CharField(allow_null=True, read_only=True)
+    summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatProgressEvent
+        fields = (
+            "turn_id", "sequence_no", "operation_id", "parent_operation_id", "kind",
+            "status", "label", "created_at", "tool_name", "summary",
+        )
+
+    def get_summary(self, event) -> dict | None:
+        return None
+
+
+class AdminChatProgressEventSerializer(ChatProgressEventSerializer):
+    tool_call_id = serializers.CharField(allow_null=True, read_only=True)
+    arguments = serializers.JSONField(allow_null=True, read_only=True)
+    result = serializers.JSONField(allow_null=True, read_only=True)
+    truncated = serializers.BooleanField(read_only=True)
+
+    class Meta(ChatProgressEventSerializer.Meta):
+        fields = ChatProgressEventSerializer.Meta.fields + (
+            "tool_call_id", "arguments", "result", "truncated",
+        )
+
+
+class ChatTurnSerializer(serializers.ModelSerializer):
+    question = serializers.CharField(read_only=True)
+    status = serializers.ChoiceField(
+        choices=("pending", "completed", "stopped", "failed"), read_only=True
+    )
+    base_sequence = serializers.IntegerField(read_only=True)
+    human_message_id = serializers.IntegerField(allow_null=True, read_only=True)
+    assistant_message_id = serializers.IntegerField(allow_null=True, read_only=True)
+    progress = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatTurn
+        fields = (
+            "id", "question", "status", "base_sequence", "human_message_id",
+            "assistant_message_id", "progress",
+        )
+
+    @extend_schema_field(ChatProgressEventSerializer(many=True))
+    def get_progress(self, turn) -> list[dict]:
+        events = list(turn.progress_events.all())
+        terminal = {
+            event.operation_id for event in events if event.status != "started"
+        }
+        cutoff = timezone.now() - timedelta(minutes=5)
+        request = self.context.get("request")
+        serializer = AdminChatProgressEventSerializer if (
+            request and request.user.is_authenticated
+            and (request.user.is_staff or request.user.is_superuser)
+        ) else ChatProgressEventSerializer
+        data = serializer(events, many=True).data
+        for item, event in zip(data, events):
+            if (
+                event.status == "started"
+                and event.operation_id not in terminal
+                and event.created_at < cutoff
+            ):
+                item["status"] = "unknown"
+                item["label"] = "결과 확인 불가"
+        return data
+
+
 class ChatFinalizeResponseSerializer(serializers.Serializer):
     turn_id = serializers.UUIDField()
     session_id = serializers.IntegerField()
@@ -141,6 +218,8 @@ class ChatFinalizeResponseSerializer(serializers.Serializer):
 
 
 class ChatNonStreamResponseSerializer(ChatCourseMetadataSerializer):
+    turn_id = serializers.UUIDField()
+    progress = ChatProgressEventSerializer(many=True)
     session_id = serializers.IntegerField()
     user_message = serializers.CharField()
     assistant_message = serializers.CharField()

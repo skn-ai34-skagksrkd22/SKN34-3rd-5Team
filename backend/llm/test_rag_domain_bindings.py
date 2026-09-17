@@ -98,6 +98,53 @@ class DomainAllowlistTest(SimpleTestCase):
                              {"answer": "ok"})
         self.assertIs(assistant_tools.state(), parent)
 
+    def test_streaming_uses_full_inventory_visible_text_and_restores_state(self):
+        parent = assistant_tools.new_state("STALE", "old", [])
+        history = [{"role": "user", "content": "fresh history"}]
+
+        class StreamingModel:
+            bound_names = ()
+
+            def bind_tools(self, tools):
+                self.bound_names = tuple(tool.name for tool in tools)
+                return self
+
+            def invoke(self, _messages, config=None):
+                current = assistant_tools.state()
+                self.assert_state(current)
+                return AIMessage(content="READY")
+
+            def stream(self, _messages, config=None):
+                current = assistant_tools.state()
+                self.assert_state(current)
+                yield AIMessage(content=[
+                    {"type": "reasoning", "text": "비공개 추론"},
+                    {"type": "output_text", "text": "보이는 답변"},
+                ])
+
+            @staticmethod
+            def assert_state(current):
+                assert (current["hint"], current["question"], current["history"]) == (
+                    "JAMSIL", "fresh", history,
+                )
+
+        model = StreamingModel()
+        stream = assistant_pipeline.stream_answer(
+            "fresh", history, "JAMSIL", model=model,
+            retriever=lambda values: {**values, "context": "", "doc_count": 0, "stadium": "JAMSIL"},
+        )
+        self.assertEqual("".join(stream), "보이는 답변")
+        self.assertEqual(set(model.bound_names), EXPECTED)
+        self.assertIs(assistant_tools.state(), parent)
+
+        interrupted = assistant_pipeline.stream_answer(
+            "fresh", history, "JAMSIL", model=StreamingModel(),
+            retriever=lambda values: {**values, "context": "", "doc_count": 0, "stadium": "JAMSIL"},
+        )
+        self.assertEqual(next(interrupted), "보이는 답변")
+        interrupted.close()
+        self.assertIs(assistant_tools.state(), parent)
+
     def test_weather_routes_only_with_explicit_course_context(self):
         self.assertEqual(dispatcher.route("날씨 알려줘"), "scope")
         self.assertEqual(dispatcher.route("잠실 직관 코스와 날씨를 알려줘", intent="route"), "course")

@@ -30,18 +30,27 @@ test("auth callers use the backend-shaped public paths", () => {
 
 test("member admin uses direct Bearer APIs and generated DTOs", () => {
   const page = readFileSync(join(root, "app/admin/page.tsx"), "utf8");
+  // 회원 관리 화면은 관리자 페이지와 마스터 관리자 마이페이지가 함께 쓰는 패널로 옮겨졌다
+  const panel = readFileSync(join(root, "components/admin-panels.tsx"), "utf8");
   const api = readFileSync(join(root, "lib/api/auth.ts"), "utf8");
-  assert.match(page, /Promise\.all\(\[getMemberUser\([^)]*\), listAdminMembers\(/);
+  assert.match(page, /<AdminMembersPanel \/>/);
+  assert.match(panel, /Promise\.all\(\[getMemberUser\([^)]*\), listAdminMembers\(/);
   assert.match(api, /components\["schemas"\]\["MemberUser"\]/);
   assert.match(api, /components\["schemas"\]\["AdminMember"\]/);
   assert.match(api, /\/api\/auth\/admin\/members\//);
   assert.match(api, /memberFetch/);
   assert.doesNotMatch(page, /\/admin-api/);
+  assert.doesNotMatch(panel, /\/admin-api/);
 });
 
 test("current roles and staff navigation come from authoritative identity", () => {
   assert.match(readFileSync(join(root, "app/mypage/page.tsx"), "utf8"), /memberRoleLabel\(user\)/);
-  assert.match(readFileSync(join(root, "components/member-header-actions.tsx"), "utf8"), /user\.is_staff && <Link href="\/admin"/);
+  const menu = readFileSync(join(root, "components/member-header-actions.tsx"), "utf8");
+  assert.match(menu, /\(user\.is_staff \|\| user\.is_superuser\) && </);
+  assert.match(menu, /href="\/mypage\?tab=profile"/);
+  assert.match(menu, /href="\/mypage\?tab=members"/);
+  assert.match(menu, /href="\/mypage\?tab=manage-posts"/);
+  assert.match(menu, /href="\/mypage\?tab=reports"/);
 });
 
 test("nginx sends every API path directly to Django", () => {

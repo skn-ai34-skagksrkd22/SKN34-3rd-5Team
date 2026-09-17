@@ -43,6 +43,23 @@ test("maps schedule venue names to canonical stadium codes", () => {
   assert.equal(weatherStadiumCode("알 수 없는 구장"), undefined);
 });
 
+test("retries briefly when the backend is busy, then gives up", async () => {
+  let calls = 0;
+  const busyOnce = async () => (calls += 1) === 1 ? Response.json({ weather: null, error: { code: "weather_busy" } }, { status: 429 }) : Response.json({ weather });
+  assert.deepEqual(await fetchStadiumWeather("JAMSIL", "2026-09-15", "18:30", busyOnce), weather);
+  assert.equal(calls, 2);
+
+  calls = 0;
+  const alwaysBusy = async () => { calls += 1; return Response.json({ weather: null }, { status: 429 }); };
+  assert.equal(await fetchStadiumWeather("JAMSIL", "2026-09-15", "18:30", alwaysBusy), null);
+  assert.equal(calls, 3);
+
+  const controller = new AbortController();
+  const pending = fetchStadiumWeather("JAMSIL", "2026-09-15", "18:30", alwaysBusy, controller.signal);
+  controller.abort();
+  assert.equal(await pending, null);
+});
+
 test("provider and malformed responses render as unavailable", async () => {
   assert.equal(await fetchStadiumWeather("JAMSIL", "2026-09-15", "19:00", async () => Response.json({ weather: null })), null);
   assert.equal(await fetchStadiumWeather("JAMSIL", "2026-09-15", "19:00", async () => Response.json({ error: { code: "provider_unavailable" } }, { status: 503 })), null);

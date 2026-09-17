@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "데이터 수집 · 전처리 · 인덱싱 흐름",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "collect",
+        "label": "수집",
+        "focus": [
+          "official",
+          "tving",
+          "kakao",
+          "crawl",
+          "preprocess"
+        ],
+        "note": "공식 조사 자료는 정규화, API 데이터는 수집 스크립트로"
+      },
+      {
+        "id": "rag-index",
+        "label": "RAG 인덱싱",
+        "focus": [
+          "csv",
+          "rules",
+          "indexer",
+          "vector",
+          "chatbot"
+        ],
+        "note": "오프라인에서 한 번 청킹 · 임베딩 · 적재"
+      },
+      {
+        "id": "db-load",
+        "label": "정형 DB 적재",
+        "focus": [
+          "csv",
+          "importer",
+          "baseball",
+          "chatbot"
+        ],
+        "note": "일정 · 순위 · 가격은 DB로 넣어 도구가 조회"
+      }
+    ],
+    "viewBox": [
+      1080,
+      560
+    ]
+  },
+  "stages": [
+    {
+      "label": "출처"
+    },
+    {
+      "label": "수집 · 정규화"
+    },
+    {
+      "label": "전처리 결과"
+    },
+    {
+      "label": "적재"
+    },
+    {
+      "label": "저장 · 사용"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "official",
+      "type": "external",
+      "label": "공식 · 자리어때",
+      "sublabel": "수동 조사 xlsx",
+      "stage": 0,
+      "row": 0,
+      "tag": "공식 / 비공식",
+      "width": 124
+    },
+    {
+      "id": "tving",
+      "type": "external",
+      "label": "TVING API",
+      "sublabel": "일정 · 순위",
+      "stage": 0,
+      "row": 1,
+      "tag": "매일 갱신",
+      "width": 124
+    },
+    {
+      "id": "kakao",
+      "type": "external",
+      "label": "카카오 로컬",
+      "sublabel": "반경 2.5km 장소",
+      "stage": 0,
+      "row": 2,
+      "tag": "THIRD_PARTY",
+      "width": 124
+    },
+    {
+      "id": "preprocess",
+      "type": "backend",
+      "label": "preprocessing",
+      "sublabel": "코드 통일 · 정규화",
+      "stage": 1,
+      "row": 0,
+      "width": 124,
+      "tag": "정규화"
+    },
+    {
+      "id": "crawl",
+      "type": "backend",
+      "label": "crawling",
+      "sublabel": "수집 스크립트",
+      "stage": 1,
+      "row": 2,
+      "width": 124,
+      "tag": "스크립트"
+    },
+    {
+      "id": "csv",
+      "type": "database",
+      "label": "CSV 21종",
+      "sublabel": "data/preprocessed",
+      "stage": 2,
+      "row": 1,
+      "tag": "status · 근거 등급",
+      "width": 124
+    },
+    {
+      "id": "rules",
+      "type": "database",
+      "label": "반입 · 규칙 문서",
+      "sublabel": "규정 JSON · md",
+      "stage": 2,
+      "row": 0,
+      "width": 124,
+      "tag": "docs/"
+    },
+    {
+      "id": "indexer",
+      "type": "backend",
+      "label": "build_index",
+      "sublabel": "청킹 · 임베딩",
+      "stage": 3,
+      "row": 0,
+      "tag": "오프라인 1회",
+      "width": 124
+    },
+    {
+      "id": "importer",
+      "type": "backend",
+      "label": "DB 적재",
+      "sublabel": "import_baseball_data",
+      "stage": 3,
+      "row": 2,
+      "width": 124,
+      "tag": "관리 명령"
+    },
+    {
+      "id": "vector",
+      "type": "database",
+      "label": "pgvector",
+      "sublabel": "3,839청크",
+      "stage": 4,
+      "row": 0,
+      "tag": "HNSW",
+      "width": 124
+    },
+    {
+      "id": "baseball",
+      "type": "database",
+      "label": "야구 정형 DB",
+      "sublabel": "경기 · 순위 · 가격",
+      "stage": 4,
+      "row": 1,
+      "width": 124,
+      "tag": "19개 테이블"
+    },
+    {
+      "id": "chatbot",
+      "type": "frontend",
+      "label": "챗봇",
+      "sublabel": "assistant agent",
+      "stage": 4,
+      "row": 2,
+      "width": 124,
+      "tag": "검색 + DB 도구"
+    }
+  ],
+  "flows": [
+    {
+      "id": "raw-sheets",
+      "from": "official",
+      "to": "preprocess",
+      "label": "원본 시트",
+      "classification": "원본 보존",
+      "variant": "emphasis"
+    },
+    {
+      "id": "games",
+      "from": "tving",
+      "to": "crawl",
+      "label": "경기 · 순위",
+      "classification": "API",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          315,
+          271
+        ]
+      ]
+    },
+    {
+      "id": "places",
+      "from": "kakao",
+      "to": "crawl",
+      "label": "주변 장소",
+      "classification": "API",
+      "variant": "default"
+    },
+    {
+      "id": "clean",
+      "from": "preprocess",
+      "to": "csv",
+      "label": "정규화 결과",
+      "classification": "원문 값 유지",
+      "variant": "emphasis"
+    },
+    {
+      "id": "collected",
+      "from": "crawl",
+      "to": "csv",
+      "label": "수집 결과",
+      "classification": "갱신",
+      "variant": "default"
+    },
+    {
+      "id": "chunks",
+      "from": "csv",
+      "to": "indexer",
+      "label": "행 → 청크",
+      "classification": "1행 1청크",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          745,
+          271
+        ]
+      ]
+    },
+    {
+      "id": "rule-chunks",
+      "from": "rules",
+      "to": "indexer",
+      "label": "규정 문장",
+      "classification": "코드값 → 문장",
+      "variant": "default"
+    },
+    {
+      "id": "tables",
+      "from": "csv",
+      "to": "importer",
+      "label": "정형 행",
+      "classification": "일정 · 가격",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          530,
+          385
+        ]
+      ]
+    },
+    {
+      "id": "embed",
+      "from": "indexer",
+      "to": "vector",
+      "label": "임베딩 적재",
+      "classification": "1536차원",
+      "variant": "emphasis"
+    },
+    {
+      "id": "load",
+      "from": "importer",
+      "to": "baseball",
+      "label": "테이블 적재",
+      "classification": "읽기 전용 조회",
+      "variant": "default"
+    },
+    {
+      "id": "read-db",
+      "from": "baseball",
+      "to": "chatbot",
+      "label": "DB 도구",
+      "classification": "SELECT",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "원본 보존",
+      "items": [
+        "data/raw는 스크립트가 덮어쓰지 않음",
+        "가격 · 면수 · 시각은 원문 그대로"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "근거 등급",
+      "items": [
+        "행마다 status · evidence_type",
+        "비공식이면 답변에 확인 안내"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "인덱싱은 오프라인",
+      "items": [
+        "요청마다 청킹 · 임베딩하지 않음",
+        "요청 때는 검색 + 생성만"
+      ]
+    }
+  ]
+}

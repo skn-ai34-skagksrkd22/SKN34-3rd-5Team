@@ -55,7 +55,7 @@ class CourseWriteProtectionMixin:
             ):
                 raise PermissionDenied("같은 사이트에서 요청해 주세요.")
             content_length = request.META.get("CONTENT_LENGTH", "")
-            if (content_length and not content_length.isdecimal()) or int(content_length or 0) > 64000 or len(request.body) > 64000:
+            if (content_length and not content_length.isdecimal()) or int(content_length or 0) > 256000 or len(request.body) > 256000:
                 raise CoursePayloadTooLarge()
         return super().initial(request, *args, **kwargs)
 
@@ -78,7 +78,10 @@ class CourseWriteThrottle(SimpleRateThrottle):
 class CourseListCreateView(CourseWriteProtectionMixin, generics.ListCreateAPIView):
     queryset = Course.objects.prefetch_related("stops")
     serializer_class = CourseSerializer
-    permission_classes = (AllowAny,)
+    permission_classes = (IsAuthenticated,)
+
+    def get_permissions(self):
+        return [AllowAny()] if self.request.method in {"GET", "HEAD", "OPTIONS"} else [IsAuthenticated()]
 
     def get_throttles(self):
         return [CourseWriteThrottle()] if self.request.method == "POST" else []
@@ -87,7 +90,7 @@ class CourseListCreateView(CourseWriteProtectionMixin, generics.ListCreateAPIVie
         token = secrets.token_urlsafe(32)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(edit_token_hash=make_password(token))
+        serializer.save(edit_token_hash=make_password(token), author=request.user.nickname or request.user.username)
         data = dict(serializer.data)
         data["editToken"] = token
         return Response(data, status=status.HTTP_201_CREATED)
@@ -108,8 +111,11 @@ class CourseListCreateView(CourseWriteProtectionMixin, generics.ListCreateAPIVie
 class CourseDetailView(CourseWriteProtectionMixin, generics.RetrieveUpdateDestroyAPIView):
     queryset = Course.objects.prefetch_related("stops")
     serializer_class = CourseSerializer
-    permission_classes = (AllowAny,)
+    permission_classes = (IsAuthenticated,)
     http_method_names = ("get", "patch", "delete", "options")
+
+    def get_permissions(self):
+        return [AllowAny()] if self.request.method in {"GET", "HEAD", "OPTIONS"} else [IsAuthenticated()]
 
     def get_throttles(self):
         return [CourseWriteThrottle()] if self.request.method in {"PATCH", "DELETE"} else []

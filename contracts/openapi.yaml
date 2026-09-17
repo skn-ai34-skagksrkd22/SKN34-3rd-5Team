@@ -4536,7 +4536,7 @@ paths:
               $ref: '#/components/schemas/GuestChat'
         required: true
       security:
-      - {}
+      - jwtAuth: []
       responses:
         '200':
           content:
@@ -4708,6 +4708,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/MemberChatEventPayload'
           description: SSE checkpoint, delta, done, or error event payload
+  /api/chat/sessions/{session_id}/turns/:
+    get:
+      operationId: chat_sessions_turns_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - in: path
+        name: session_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - chat
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedChatTurnList'
+          description: ''
   /api/chat/turns/{turn_id}/finalize/:
     post:
       operationId: chat_turns_finalize_create
@@ -7775,6 +7801,13 @@ components:
           nullable: true
         route:
           type: string
+        turn_id:
+          type: string
+          format: uuid
+        progress:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatProgressEvent'
         session_id:
           type: integer
         user_message:
@@ -7790,10 +7823,83 @@ components:
       required:
       - assistant_message
       - assistant_message_id
+      - progress
       - session_id
       - status
+      - turn_id
       - user_message
       - user_message_id
+    ChatProgressEvent:
+      type: object
+      properties:
+        turn_id:
+          type: string
+          format: uuid
+        sequence_no:
+          type: integer
+          minimum: 1
+        operation_id:
+          type: string
+          format: uuid
+        parent_operation_id:
+          type: string
+          format: uuid
+          nullable: true
+        kind:
+          $ref: '#/components/schemas/ChatProgressEventKindEnum'
+        status:
+          $ref: '#/components/schemas/ChatProgressEventStatusEnum'
+        label:
+          type: string
+          maxLength: 160
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        tool_name:
+          type: string
+          readOnly: true
+          nullable: true
+        summary:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+      required:
+      - created_at
+      - kind
+      - label
+      - operation_id
+      - parent_operation_id
+      - sequence_no
+      - status
+      - summary
+      - tool_name
+      - turn_id
+    ChatProgressEventKindEnum:
+      enum:
+      - phase
+      - retrieval
+      - tool
+      type: string
+      description: |-
+        * `phase` - 처리
+        * `retrieval` - 검색
+        * `tool` - 도구
+    ChatProgressEventStatusEnum:
+      enum:
+      - started
+      - completed
+      - failed
+      - interrupted
+      - unknown
+      type: string
+      description: |-
+        * `started` - 시작
+        * `completed` - 완료
+        * `failed` - 실패
+        * `interrupted` - 중단
+        * `unknown` - 확인 불가
     ChatSession:
       type: object
       properties:
@@ -7815,6 +7921,56 @@ components:
       - created_at
       - id
       - updated_at
+    ChatTurn:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        question:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ChatTurnStatusEnum'
+          readOnly: true
+        base_sequence:
+          type: integer
+          readOnly: true
+        human_message_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        assistant_message_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        progress:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatProgressEvent'
+          readOnly: true
+      required:
+      - assistant_message_id
+      - base_sequence
+      - human_message_id
+      - id
+      - progress
+      - question
+      - status
+    ChatTurnStatusEnum:
+      enum:
+      - pending
+      - completed
+      - stopped
+      - failed
+      type: string
+      description: |-
+        * `pending` - pending
+        * `completed` - completed
+        * `stopped` - stopped
+        * `failed` - failed
     CommunityCategoryEnum:
       enum:
       - 질문
@@ -7939,6 +8095,8 @@ components:
         content:
           type: string
           maxLength: 20000
+        contentDoc:
+          nullable: true
         category:
           $ref: '#/components/schemas/CommunityCategoryEnum'
         createdAt:
@@ -8027,6 +8185,8 @@ components:
         content:
           type: string
           maxLength: 20000
+        contentDoc:
+          nullable: true
       required:
       - board
       - category
@@ -8132,6 +8292,8 @@ components:
           type: string
         content:
           type: string
+        contentDoc:
+          nullable: true
         contentFormat:
           $ref: '#/components/schemas/ContentFormatEnum'
         duration:
@@ -8197,6 +8359,8 @@ components:
         content:
           type: string
           maxLength: 12000
+        contentDoc:
+          nullable: true
         contentFormat:
           oneOf:
           - $ref: '#/components/schemas/ContentFormatEnum'
@@ -8249,6 +8413,8 @@ components:
           type: string
         content:
           type: string
+        contentDoc:
+          nullable: true
         contentFormat:
           $ref: '#/components/schemas/ContentFormatEnum'
         duration:
@@ -9255,6 +9421,7 @@ components:
       oneOf:
       - $ref: '#/components/schemas/GuestChatDeltaEvent'
       - $ref: '#/components/schemas/GuestChatDoneEvent'
+      - $ref: '#/components/schemas/ChatProgressEvent'
       - $ref: '#/components/schemas/ChatErrorEvent'
     GuestChatMessage:
       type: object
@@ -9453,6 +9620,7 @@ components:
       - $ref: '#/components/schemas/ChatCheckpointEvent'
       - $ref: '#/components/schemas/ChatDeltaEvent'
       - $ref: '#/components/schemas/ChatDoneEvent'
+      - $ref: '#/components/schemas/ChatProgressEvent'
       - $ref: '#/components/schemas/ChatErrorEvent'
     MemberUser:
       type: object
@@ -9651,6 +9819,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminMember'
+    PaginatedChatTurnList:
+      type: object
+      required:
+      - count
+      - next
+      - previous
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatTurn'
     PaginatedFacilityList:
       type: object
       required:
@@ -10275,6 +10468,8 @@ components:
         content:
           type: string
           maxLength: 20000
+        contentDoc:
+          nullable: true
     PatchedCoursePatchRequest:
       type: object
       properties:
@@ -10287,6 +10482,8 @@ components:
         content:
           type: string
           maxLength: 12000
+        contentDoc:
+          nullable: true
         contentFormat:
           oneOf:
           - $ref: '#/components/schemas/ContentFormatEnum'

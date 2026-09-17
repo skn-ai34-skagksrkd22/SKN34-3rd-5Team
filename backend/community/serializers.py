@@ -1,7 +1,71 @@
+import uuid
+
+from django.db import models, transaction
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from .models import CommunityComment, CommunityImage, CommunityPost, FREE_CATEGORIES, TEAM_CATEGORIES, TEAM_CODES
+
+
+FONT_NAMES = {"sans", "serif", "mono"}
+FONT_SIZES = {12, 14, 16, 18, 20, 24, 28, 32}
+FONT_COLORS = {"#26354b", "#e1131b", "#246bf3", "#18825c", "#7550ae"}
+
+
+def validate_content_doc(document, user, post=None, course=None, max_chars=20000):
+    if not isinstance(document, dict) or set(document) != {"version", "blocks"} or type(document["version"]) is not int or document["version"] != 1:
+        raise serializers.ValidationError("본문 서식이 올바르지 않아요.")
+    blocks = document["blocks"]
+    if not isinstance(blocks, list) or not 1 <= len(blocks) <= 500:
+        raise serializers.ValidationError("본문 서식이 올바르지 않아요.")
+    lines, image_ids, chars = [], [], 0
+    for block in blocks:
+        if not isinstance(block, dict):
+            raise serializers.ValidationError("본문 서식이 올바르지 않아요.")
+        if block.get("type") == "image":
+            if set(block) != {"type", "id"}:
+                raise serializers.ValidationError("이미지 정보가 올바르지 않아요.")
+            try:
+                image_id = uuid.UUID(block["id"])
+                if not isinstance(block["id"], str) or str(image_id) != block["id"].lower():
+                    raise ValueError("noncanonical image id")
+                image_ids.append(image_id)
+            except (TypeError, ValueError, AttributeError) as exc:
+                raise serializers.ValidationError("이미지 정보가 올바르지 않아요.") from exc
+            lines.append("[이미지]")
+            continue
+        if set(block) != {"type", "align", "runs"} or block["type"] != "paragraph" or not isinstance(block["align"], str) or block["align"] not in {"left", "center", "right"}:
+            raise serializers.ValidationError("문단 서식이 올바르지 않아요.")
+        runs = block["runs"]
+        if not isinstance(runs, list) or len(runs) > 500:
+            raise serializers.ValidationError("글자 서식이 올바르지 않아요.")
+        pieces = []
+        for run in runs:
+            if not isinstance(run, dict) or set(run) != {"text", "font", "size", "color", "bold", "italic", "underline"}:
+                raise serializers.ValidationError("글자 서식이 올바르지 않아요.")
+            if not isinstance(run["text"], str) or len(run["text"]) > 20000 or "\n" in run["text"] or "\r" in run["text"]:
+                raise serializers.ValidationError("본문 글자가 올바르지 않아요.")
+            if not isinstance(run["font"], str) or run["font"] not in FONT_NAMES or type(run["size"]) is not int or run["size"] not in FONT_SIZES or not isinstance(run["color"], str) or run["color"] not in FONT_COLORS:
+                raise serializers.ValidationError("글꼴 서식이 올바르지 않아요.")
+            if any(type(run[field]) is not bool for field in ("bold", "italic", "underline")):
+                raise serializers.ValidationError("글자 서식이 올바르지 않아요.")
+            chars += len(run["text"])
+            pieces.append(run["text"])
+        lines.append("".join(pieces))
+    if chars > max_chars or len(image_ids) > 10 or len(set(image_ids)) != len(image_ids):
+        raise serializers.ValidationError(f"본문은 {max_chars:,}자, 이미지는 10장까지 등록할 수 있어요.")
+    if image_ids and not user.is_authenticated:
+        raise serializers.ValidationError("이미지를 첨부하려면 로그인해 주세요.")
+    allowed = CommunityImage.objects.filter(id__in=image_ids, owner=user) if image_ids else CommunityImage.objects.none()
+    if course is not None:
+        allowed = allowed.filter(draft__isnull=True, post__isnull=True).filter(models.Q(course__isnull=True) | models.Q(course=course))
+    elif post is None:
+        allowed = allowed.filter(draft__isnull=True, post__isnull=True, course__isnull=True)
+    else:
+        allowed = allowed.filter(draft__isnull=True, course__isnull=True).filter(models.Q(post__isnull=True) | models.Q(post=post))
+    if allowed.count() != len(image_ids):
+        raise serializers.ValidationError("본인이 올린 이미지만 첨부할 수 있어요.")
+    return "\n".join(lines).strip(), image_ids
 
 
 @extend_schema_serializer(component_name="CommunityImageMetadata")
@@ -30,11 +94,12 @@ class CommunityPostSerializer(serializers.ModelSerializer):
     images = CommunityImageMetadataSerializer(many=True, read_only=True)
     category = serializers.ChoiceField(choices=TEAM_CATEGORIES)
     content = serializers.CharField(max_length=20000, allow_blank=False, trim_whitespace=True)
+    contentDoc = serializers.JSONField(source="content_doc", allow_null=True, required=False)
 
     class Meta:
         model = CommunityPost
         fields = (
-            "id", "sourceId", "postNumber", "board", "teamCode", "authorId", "author", "title", "content",
+            "id", "sourceId", "postNumber", "board", "teamCode", "authorId", "author", "title", "content", "contentDoc",
             "category", "createdAt", "views", "recommendations", "downvotes", "commentCount", "isSample",
             "images",
         )
@@ -68,8 +133,31 @@ class CommunityPostSerializer(serializers.ModelSerializer):
         allowed_categories = FREE_CATEGORIES if board == "free" else TEAM_CATEGORIES
         if category not in allowed_categories:
             raise serializers.ValidationError({"category": "올바른 카테고리를 입력해 주세요."})
+        if "content_doc" in attrs and attrs["content_doc"] is not None:
+            text, image_ids = validate_content_doc(attrs["content_doc"], self.context["request"].user, self.instance)
+            if not text or attrs.get("content", getattr(self.instance, "content", "")) != text:
+                raise serializers.ValidationError({"contentDoc": "본문 내용과 서식이 일치하지 않아요."})
+            self._image_ids = image_ids
+        elif "content" in attrs and self.instance and self.instance.content_doc is not None:
+            attrs["content_doc"] = None
         attrs["team_code"] = team_code
         return attrs
+
+    def create(self, validated_data):
+        post = super().create(validated_data)
+        if hasattr(self, "_image_ids"):
+            CommunityImage.objects.filter(id__in=self._image_ids, owner=post.owner).update(post=post)
+        return post
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        post = super().update(instance, validated_data)
+        if hasattr(self, "_image_ids"):
+            CommunityImage.objects.filter(post=post).exclude(id__in=self._image_ids).update(post=None)
+            CommunityImage.objects.filter(id__in=self._image_ids, owner=post.owner).update(post=post)
+        elif validated_data.get("content_doc", "not-updated") is None:
+            CommunityImage.objects.filter(post=post).update(post=None)
+        return post
 
 
 @extend_schema_serializer(component_name="CommunityPostWrite")
@@ -79,6 +167,7 @@ class CommunityPostWriteSerializer(serializers.Serializer):
     category = serializers.ChoiceField(choices=TEAM_CATEGORIES)
     title = serializers.CharField(max_length=200)
     content = serializers.CharField(max_length=20000)
+    contentDoc = serializers.JSONField(required=False, allow_null=True)
 
 
 @extend_schema_serializer(component_name="CommunityPostPatch")
@@ -88,6 +177,7 @@ class CommunityPostPatchSerializer(CommunityPostWriteSerializer):
     category = serializers.ChoiceField(choices=TEAM_CATEGORIES, required=False)
     title = serializers.CharField(max_length=200, required=False)
     content = serializers.CharField(max_length=20000, required=False)
+    contentDoc = serializers.JSONField(required=False, allow_null=True)
 
 
 @extend_schema_serializer(component_name="CommunityCommentWrite")

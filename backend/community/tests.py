@@ -1,17 +1,22 @@
 import importlib
 import json
+import tempfile
+from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, close_old_connections, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
+from django.test.utils import override_settings
+from PIL import Image
 from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import CommunityPost, CommunityReport, CommunityVote, TEAM_CODES
+from .models import CommunityImage, CommunityPost, CommunityReport, CommunityVote, TEAM_CODES
 
 
 SEED_FILE = Path(__file__).parent / "migrations/data/community_posts_v1.json"
@@ -32,17 +37,44 @@ class CommunityPostApiTests(APITestCase):
     def test_public_list_and_filters_return_seeded_dto(self):
         response = self.client.get("/community/posts/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 350)
-        self.assertEqual(response.data[0], {
+        # 예시 350개 + 이전된 글(0006) + 로컬 샘플 글(0010)
+        self.assertEqual(len(response.data), 352)
+        self.assertEqual(response.data[0]["id"], "e25bc43f62554ec2adc6fbd683fc397b")
+        self.assertEqual(response.data[0]["author"], "신그는날두인가")
+        self.assertFalse(response.data[0]["isSample"])
+        self.assertEqual(response.data[1]["id"], "153c4936cba745d3a3e89f07891885c4")
+        self.assertEqual(response.data[1]["author"], "진성칰갈")
+        self.assertEqual(response.data[-1], {
             "id": "lg-sample-1", "sourceId": "lg-sample-1", "postNumber": "001001", "board": "teams",
             "teamCode": "LG", "authorId": None, "author": "예시 작성자", "title": "잠실 외야에서 보면 타구 판단 좀 되나요?",
-            "content": "늘 내야에서만 보다가 이번엔 외야로 가볼까 합니다.\n\n공이 뜨면 홈런인지 평범한 플라이인지 구분이 잘 되는지 궁금해요. 중계로 볼 때랑 느낌이 많이 다를 것 같아서요. LG 응원하면서 수비 위치도 같이 보고 싶습니다.",
+            "content": "늘 내야에서만 보다가 이번엔 외야로 가볼까 합니다.\n\n공이 뜨면 홈런인지 평범한 플라이인지 구분이 잘 되는지 궁금해요. 중계로 볼 때랑 느낌이 많이 다를 것 같아서요. LG 응원하면서 수비 위치도 같이 보고 싶습니다.", "contentDoc": None,
             "category": "좌석·예매", "createdAt": None, "views": 0, "recommendations": 0, "downvotes": 0,
-            "commentCount": 0, "isSample": True,
+            "commentCount": 0, "isSample": True, "images": [],
             "images": [],
         })
+        numbers = [post["postNumber"] for post in response.data]
+        self.assertEqual(numbers, sorted(numbers, reverse=True))
         self.assertEqual(len(self.client.get("/community/posts/?board=free").data), 50)
         self.assertEqual(len(self.client.get("/community/posts/?board=teams&team=lt").data), 30)
+
+    def test_new_posts_lead_the_first_page_in_free_and_team_boards(self):
+        free = self.create_post(key="new-free", title="최신 자유 글")
+        team = self.create_post(key="new-team", board="teams", teamCode="LG", title="최신 팀 글")
+        self.assertEqual((free.status_code, team.status_code), (201, 201))
+        self.client.force_authenticate(user=None)
+
+        for path, expected_id in (
+            ("/community/posts/?board=free", free.data["id"]),
+            ("/community/posts/?board=teams&team=LG", team.data["id"]),
+        ):
+            with self.subTest(path=path):
+                posts = self.client.get(path).data
+                self.assertGreater(len(posts), 20)
+                self.assertEqual(posts[0]["id"], expected_id)
+                self.assertEqual(
+                    [post["postNumber"] for post in posts],
+                    sorted((post["postNumber"] for post in posts), reverse=True),
+                )
 
     def test_invalid_filters_and_unauthenticated_writes_are_rejected(self):
         for query in ("?board=other", "?team=XX", "?board=free&team=LG"):
@@ -122,6 +154,66 @@ class CommunityPostApiTests(APITestCase):
         legacy_url = "/community/posts/lg-sample-1/"
         self.assertEqual(self.client.get(legacy_url).status_code, 200)
         self.assertEqual(self.client.patch(legacy_url, {"title": "탈취"}, format="json").status_code, 403)
+
+
+class CommunityRichPostTests(APITestCase):
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user(username="rich-owner")
+        self.other = get_user_model().objects.create_user(username="rich-other")
+        self.media = tempfile.TemporaryDirectory()
+        self.settings = override_settings(MEDIA_ROOT=self.media.name)
+        self.settings.enable()
+        self.addCleanup(self.settings.disable)
+        self.addCleanup(self.media.cleanup)
+
+    @staticmethod
+    def image_file():
+        buffer = BytesIO()
+        Image.new("RGB", (20, 20), "red").save(buffer, format="JPEG")
+        return SimpleUploadedFile("photo.jpg", buffer.getvalue(), content_type="image/jpeg")
+
+    @staticmethod
+    def document(image_id):
+        return {"version": 1, "blocks": [
+            {"type": "paragraph", "align": "center", "runs": [{"text": "직관 사진", "font": "serif", "size": 24, "color": "#246bf3", "bold": True, "italic": False, "underline": True}]},
+            {"type": "image", "id": image_id},
+        ]}
+
+    def test_jwt_upload_and_rich_post_round_trip(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(self.owner).access_token}")
+        uploaded = self.client.post("/community/images/", {"image": self.image_file()}, format="multipart")
+        self.assertEqual(uploaded.status_code, 201)
+        self.assertEqual((uploaded.data["width"], uploaded.data["height"]), (20, 20))
+        image_id = uploaded.data["id"]
+        doc = self.document(image_id)
+        created = self.client.post("/community/posts/", {"board": "free", "teamCode": "", "category": "잡담", "title": "서식 글", "content": "직관 사진\n[이미지]", "contentDoc": doc}, format="json", HTTP_IDEMPOTENCY_KEY="rich-1")
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.data["contentDoc"], doc)
+        retried = self.client.post("/community/posts/", {"board": "free", "teamCode": "", "category": "잡담", "title": "서식 글", "content": "직관 사진\n[이미지]", "contentDoc": doc}, format="json", HTTP_IDEMPOTENCY_KEY="rich-1")
+        self.assertEqual((retried.status_code, retried.data["id"]), (200, created.data["id"]))
+        self.assertEqual(str(CommunityImage.objects.get(pk=image_id).post_id), created.data["id"])
+        self.client.credentials()
+        fetched = self.client.get(f"/community/posts/{created.data['id']}/")
+        image = self.client.get(uploaded.data["url"].removeprefix("/api"))
+        self.assertEqual((fetched.status_code, image.status_code, image["Content-Type"]), (200, 200, "image/jpeg"))
+        self.assertEqual(fetched.data["contentDoc"], doc)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(self.owner).access_token}")
+        edited = self.client.patch(f"/community/posts/{created.data['id']}/", {"title": "수정된 서식 글", "content": "직관 사진\n[이미지]", "contentDoc": doc}, format="json")
+        self.assertEqual((edited.status_code, edited.data["title"], edited.data["contentDoc"]), (200, "수정된 서식 글", doc))
+        self.assertEqual(str(CommunityImage.objects.get(pk=image_id).post_id), created.data["id"])
+
+    def test_spoofed_files_and_foreign_images_are_rejected(self):
+        self.assertEqual(self.client.post("/community/images/", {"image": self.image_file()}, format="multipart").status_code, 401)
+        self.client.force_authenticate(self.owner)
+        bad = SimpleUploadedFile("fake.jpg", b"<script>alert(1)</script>", content_type="image/jpeg")
+        self.assertEqual(self.client.post("/community/images/", {"image": bad}, format="multipart").status_code, 400)
+        uploaded = self.client.post("/community/images/", {"image": self.image_file()}, format="multipart")
+        self.assertEqual(uploaded.status_code, 201)
+        self.client.force_authenticate(self.other)
+        payload = {"board": "free", "teamCode": "", "category": "잡담", "title": "타인 이미지", "content": "직관 사진\n[이미지]", "contentDoc": self.document(uploaded.data["id"])}
+        self.assertEqual(self.client.post("/community/posts/", payload, format="json", HTTP_IDEMPOTENCY_KEY="foreign-1").status_code, 400)
+        payload["contentDoc"]["blocks"][0]["runs"][0]["font"] = "<script>"
+        self.assertEqual(self.client.post("/community/posts/", payload, format="json", HTTP_IDEMPOTENCY_KEY="xss-1").status_code, 400)
 
 
 class CommunityInteractionSchemaTests(APITestCase):

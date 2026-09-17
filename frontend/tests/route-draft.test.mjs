@@ -10,7 +10,7 @@ import ts from "typescript";
 const frontend = dirname(dirname(fileURLToPath(import.meta.url)));
 const scratch = mkdtempSync(join(tmpdir(), "kbo-route-draft-test-"));
 after(() => rmSync(scratch, { recursive: true }));
-for (const name of ["client-id", "route-draft", "stadiums"]) {
+for (const name of ["client-id", "route-draft", "stadiums", "community-rich-content"]) {
   const source = readFileSync(join(frontend, "lib", `${name}.ts`), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } });
   writeFileSync(join(scratch, `${name}.js`), outputText);
@@ -29,6 +29,32 @@ test("versioned draft round-trips incomplete fields and route details", () => {
   assert.equal(saved.status, "saved");
   assert.deepEqual(readRouteDraft(storage, "copy:42").draft?.data, data);
   assert.equal(readRouteDraft(storage, "edit:42").draft, undefined);
+});
+
+test("route story styles and image references survive draft save on HTTP", () => {
+  const storage = memory();
+  const run = { text: "카페 방문", font: "serif", size: 20, color: "#246bf3", bold: true, italic: false, underline: false };
+  const contentDoc = { version: 1, blocks: [
+    { type: "paragraph", align: "center", runs: [run] },
+    { type: "image", id: "d65e8543-1267-4530-a156-63be55546568" },
+  ] };
+  const saved = saveRouteDraft(storage, "new:JAMSIL", { ...data, content: "카페 방문\n[이미지]", contentDoc }, null);
+  assert.equal(saved.status, "saved");
+  assert.deepEqual(readRouteDraft(storage, "new:JAMSIL").draft.data.contentDoc, contentDoc);
+  assert.ok(saved.draft.revision);
+});
+
+test("draft save still works when insecure HTTP has no crypto.randomUUID", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", { value: {}, configurable: true });
+  try {
+    const saved = saveRouteDraft(memory(), "new:JAMSIL", data, null);
+    assert.equal(saved.status, "saved");
+    assert.match(saved.draft.revision, /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "crypto", previous);
+    else delete globalThis.crypto;
+  }
 });
 
 test("invalid JSON, versions, types, and coordinates fail closed without deletion", () => {

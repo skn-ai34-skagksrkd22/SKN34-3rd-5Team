@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
 
   # ========================
@@ -69,7 +75,7 @@ services:
       TOUR_API_KEY: ${TOUR_API_KEY:-}
       COMMUNITY_IMAGE_S3_ENDPOINT: http://minio:9000
       COMMUNITY_IMAGE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      COMMUNITY_IMAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+      COMMUNITY_IMAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-miniopassword}
       COMMUNITY_IMAGE_S3_BUCKET: ${COMMUNITY_IMAGE_S3_BUCKET:-community-images}
       COMMUNITY_IMAGE_S3_REGION: ${COMMUNITY_IMAGE_S3_REGION:-us-east-1}
 
@@ -96,6 +102,8 @@ services:
              python manage.py provision_baseball_reader --prepare-db-permissions &&
              python manage.py runserver 0.0.0.0:8000"
 
+    logging: *default-logging
+
 
   # ========================
   # Next.js Frontend
@@ -120,6 +128,8 @@ services:
       NEXT_PUBLIC_KAKAO_MAP_KEY: ${NEXT_PUBLIC_KAKAO_MAP_KEY:-}
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
 
+    logging: *default-logging
+
 
   # ========================
   # Nginx
@@ -138,6 +148,8 @@ services:
       - backend
       - frontend
 
+    logging: *default-logging
+
 
   # ========================
   # Mailpit
@@ -145,6 +157,7 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     restart: unless-stopped
+    logging: *default-logging
 
     ports:
       - "1025:1025"
@@ -164,6 +177,7 @@ services:
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
+    logging: *default-logging
     command: server /data --console-address ":9001"
     ports:
       - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"

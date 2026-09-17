@@ -20,6 +20,7 @@ class Course(models.Model):
     stadium = models.CharField(max_length=120)
     description = models.TextField(blank=True)
     content = models.TextField(blank=True)
+    content_doc = models.JSONField(null=True, blank=True)
     content_format = models.CharField(max_length=16, blank=True)
     duration = models.CharField(max_length=80)
     cover = models.CharField(max_length=255, blank=True)

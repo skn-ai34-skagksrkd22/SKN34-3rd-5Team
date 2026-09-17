@@ -17,6 +17,7 @@ from .club import agent as club
 from .course import agent as course
 from .nearby import agent as nearby
 from .venue import agent as venue
+from ..progress import ProgressCancelled, ProgressStorageError, operation
 
 log = logging.getLogger(__name__)
 
@@ -105,9 +106,13 @@ def stadium_code_from_name(name: str | None) -> str | None:
     return None
 
 
-def _call(domain, question, history, hint_stadium):
+def _call(domain, question, history, hint_stadium, **extra):
     try:
-        return domain.answer(question, history=history, hint_stadium=hint_stadium)
+        name = domain.__name__.split(".")[-2]
+        with operation("phase", name):
+            return domain.answer(question, history=history, hint_stadium=hint_stadium, **extra)
+    except (ProgressCancelled, ProgressStorageError):
+        raise
     except Exception:            # 한 도메인이 죽어도 챗봇 전체가 죽지 않게
         log.exception("rag domain failed: %s", domain.__name__)
         if domain is nearby:     # 카카오 조회가 죽으면 venue(RAG)라도 답하게
@@ -123,18 +128,23 @@ def _call(domain, question, history, hint_stadium):
                 r = club.answer(question, history=history, hint_stadium=hint_stadium)
                 r["route"] = f"venue:error>club>{r['route']}"
                 return r
+            except (ProgressCancelled, ProgressStorageError):
+                raise
             except Exception:
                 log.exception("rag fallback failed")
         return {"answer": persona.FIXED["error"], "sources": [], "route": f"{domain.__name__}:error"}
 
 
 def answer(question: str, history: list[dict] | None = None, stadium_name: str | None = None,
-           intent: str | None = None) -> dict:
+           intent: str | None = None, origin: dict | None = None) -> dict:
     """진입점 — 모든 질문이 assistant 파이프라인(프롬프트 · RAG · 에이전트[DB 조회 도구] · 파서)으로 간다.
 
     스위치 없음 (2026-09-15). 야구와 무관한 질문만 여기서 바로 돌려보내고,
     에이전트가 실패하면 같은 질문을 예전 도메인(course/nearby/club/venue)으로 한 번 더 답한다.
     반환 {"answer","sources","route","places","coursePayload"} — places·coursePayload 는 코스를 짰을 때만 채워진다.
+
+    origin: 코스 작성 화면에서 지도에 찍은 출발지 {"lat","lng"}. 에이전트는 출발지를 모르므로,
+    출발지가 있는 코스 질문은 출발지 기준으로 단계별로 장소를 찾는 course 도메인이 바로 답한다.
     """
     history = history or []
     hint = stadium_code_from_name(stadium_name)
@@ -143,12 +153,18 @@ def answer(question: str, history: list[dict] | None = None, stadium_name: str |
     if kind == "scope":
         return {"answer": persona.FIXED["scope"], "sources": [], "route": "dispatcher:scope", "places": []}
 
-    try:
-        result = assistant.answer(question, history=history, hint_stadium=hint)
-    except Exception:
-        log.exception("assistant pipeline failed — falling back to domain")
-        result = _domain_answer(kind, question, history, hint)
-        result["route"] = f"agent:error>{result['route']}"
+    if _origin_course(kind, origin):
+        result = _domain_answer(kind, question, history, hint, origin)
+    else:
+        try:
+            with operation("phase", "assistant"):
+                result = assistant.answer(question, history=history, hint_stadium=hint)
+        except (ProgressCancelled, ProgressStorageError):
+            raise
+        except Exception:
+            log.exception("assistant pipeline failed — falling back to domain")
+            result = _domain_answer(kind, question, history, hint, origin)
+            result["route"] = f"agent:error>{result['route']}"
 
     result["answer"] = persona.finalize(result["answer"])
     result.setdefault("places", [])
@@ -156,11 +172,60 @@ def answer(question: str, history: list[dict] | None = None, stadium_name: str |
     return result
 
 
-def _domain_answer(kind, question, history, hint) -> dict:
+def _origin_course(kind: str, origin: dict | None) -> bool:
+    """출발지가 찍힌 코스 질문인가 — 이때는 course 도메인이 출발지부터 이어서 코스를 짠다."""
+    return bool(origin) and kind == "course" and course.READY
+
+
+def stream(question: str, history: list[dict] | None = None, stadium_name: str | None = None,
+           intent: str | None = None, origin: dict | None = None):
+    """assistant의 마지막 provider 응답만 흘리고 완료 메타데이터를 반환한다."""
+    history = history or []
+    hint = stadium_code_from_name(stadium_name)
+    kind = route(question, intent)
+    if kind == "scope":
+        result = {"answer": persona.FIXED["scope"], "sources": [], "route": "dispatcher:scope", "places": []}
+        yield result["answer"]
+        return result
+    if _origin_course(kind, origin):
+        result = _domain_answer(kind, question, history, hint, origin)
+        result["answer"] = persona.finalize(result["answer"])
+        yield result["answer"]
+        result.setdefault("places", [])
+        result.setdefault("coursePayload", None)
+        return result
+    emitted = False
+    try:
+        with operation("phase", "assistant"):
+            stream = assistant.stream_answer(question, history=history, hint_stadium=hint)
+            while True:
+                try:
+                    chunk = next(stream)
+                except StopIteration as done:
+                    result = done.value
+                    break
+                emitted = True
+                yield chunk
+    except (ProgressCancelled, ProgressStorageError):
+        raise
+    except Exception:
+        if emitted:
+            raise
+        log.exception("assistant stream failed — falling back to domain")
+        result = _domain_answer(kind, question, history, hint, origin)
+        result["route"] = f"agent:error>{result['route']}"
+        result["answer"] = persona.finalize(result["answer"])
+        yield result["answer"]
+    result.setdefault("places", [])
+    result.setdefault("coursePayload", None)
+    return result
+
+
+def _domain_answer(kind, question, history, hint, origin=None) -> dict:
     """예전 도메인 라우팅 — 에이전트 파이프라인이 실패했을 때만 쓴다."""
     use_venue = venue.READY
     if kind == "course" and course.READY:
-        result = _call(course, question, history, hint)
+        result = _call(course, question, history, hint, **({"origin": origin} if origin else {}))
         result["route"] = f"course>{result['route']}"
     elif kind == "nearby":
         result = _call(nearby, question, history, hint)

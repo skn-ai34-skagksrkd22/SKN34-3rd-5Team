@@ -1,7 +1,8 @@
 import { memberError, memberFetch } from "../member-auth-request";
 import { isRecord, parseChatRequest } from "./validation";
 import { parseChatCourse } from "./course";
-import type { ChatCourse, ChatReply, ChatRequest, ChatStatus } from "./types";
+import { isUuid, parseProgressEvent } from "./progress";
+import type { ChatCourse, ChatProgressEvent, ChatReply, ChatRequest, ChatStatus } from "./types";
 import { MAX_REPLY_LENGTH } from "./types";
 import type {
   ChatCourseMetadataDto,
@@ -9,6 +10,8 @@ import type {
   ChatMessageDto,
   ChatNonStreamResponseDto,
   ChatSessionDto,
+  ChatTurnHistoryDto,
+  ChatTurnPageDto,
   GuestChatDoneEventDto,
 } from "./wire";
 
@@ -20,6 +23,7 @@ export type ChatCheckpoint = { turnId: string; receipt: string; prefix: string }
 export type ChatStreamCallbacks = {
   onDelta?: (answer: string, checkpoint?: ChatCheckpoint) => void;
   onCheckpoint?: (checkpoint: ChatCheckpoint) => void;
+  onProgress?: (progress: ChatProgressEvent) => void;
   getStop?: () => ChatCheckpoint | null;
   isCurrent?: () => boolean;
   finalizeSignal?: AbortSignal;
@@ -131,7 +135,8 @@ async function readMemberStream(response: Response, sessionId: number, callbacks
     throw new ChatClientError("스트림 응답을 확인하지 못했어요.", 502, true, sessionId);
   }
   const reader = response.body.getReader(), decoder = new TextDecoder();
-  let buffer = "", answer = "", checkpoint: ChatCheckpoint | null = null, done = false, metadata: ChatCourseMetadataDto = {}, course: ChatCourse | undefined;
+  let buffer = "", answer = "", checkpoint: ChatCheckpoint | null = null, progressTurn = "", lastProgressSequence = 0, done = false, metadata: ChatCourseMetadataDto = {}, course: ChatCourse | undefined;
+  const progressFrames = new Map<number, string>();
   const consume = (frame: string) => {
     const [eventLine, ...lines] = frame.split(/\r?\n/);
     const event = eventLine?.startsWith("event:") ? eventLine.slice(6).trim() : "";
@@ -142,7 +147,21 @@ async function readMemberStream(response: Response, sessionId: number, callbacks
     if (event === "checkpoint") {
       if (checkpoint) throw new ChatClientError("체크포인트 순서가 올바르지 않아요.", 502, true, sessionId);
       checkpoint = parseCheckpoint(value, "");
+      if (progressTurn && progressTurn !== checkpoint.turnId) throw new ChatClientError("진행 상태의 대화 정보가 다릅니다.", 502, true, sessionId);
       callbacks.onCheckpoint?.(checkpoint);
+      return;
+    }
+    if (event === "progress") {
+      const progress = parseProgressEvent(value, checkpoint?.turnId ?? (progressTurn || undefined));
+      if (!progress) throw new ChatClientError("진행 상태 형식이 올바르지 않아요.", 502, true, sessionId);
+      const fingerprint = JSON.stringify(value), seen = progressFrames.get(progress.sequenceNo);
+      if (seen) {
+        if (seen !== fingerprint) throw new ChatClientError("진행 상태 순서가 충돌했어요.", 502, true, sessionId);
+        return;
+      }
+      if (progress.sequenceNo <= lastProgressSequence) throw new ChatClientError("진행 상태 순서가 올바르지 않아요.", 502, true, sessionId);
+      progressTurn = progress.turnId; lastProgressSequence = progress.sequenceNo; progressFrames.set(progress.sequenceNo, fingerprint);
+      callbacks.onProgress?.(progress);
       return;
     }
     if (event === "delta") {
@@ -204,7 +223,8 @@ async function readGuestStream(response: Response, callbacks: ChatStreamCallback
     throw new ChatClientError("스트림 응답을 확인하지 못했어요.", 502);
   }
   const reader = response.body.getReader(), decoder = new TextDecoder();
-  let buffer = "", answer = "", done = false, metadata: ChatCourseMetadataDto = {}, course: ChatCourse | undefined;
+  let buffer = "", answer = "", progressTurn = "", lastProgressSequence = 0, done = false, metadata: ChatCourseMetadataDto = {}, course: ChatCourse | undefined;
+  const progressFrames = new Map<number, string>();
   callbacks.onCheckpoint?.({ turnId: "guest", receipt: "", prefix: "" });
   const consume = (frame: string) => {
     const [eventLine, ...lines] = frame.split(/\r?\n/), event = eventLine?.slice(6).trim();
@@ -212,6 +232,19 @@ async function readGuestStream(response: Response, callbacks: ChatStreamCallback
     let value: unknown;
     try { value = JSON.parse(raw); } catch { throw new ChatClientError("스트림 응답 형식이 올바르지 않아요.", 502); }
     if (!isRecord(value) || done) throw new ChatClientError("스트림 응답 순서가 올바르지 않아요.", 502);
+    if (event === "progress") {
+      const progress = parseProgressEvent(value, progressTurn || undefined);
+      if (!progress) throw new ChatClientError("진행 상태 형식이 올바르지 않아요.", 502);
+      const fingerprint = JSON.stringify(value), seen = progressFrames.get(progress.sequenceNo);
+      if (seen) {
+        if (seen !== fingerprint) throw new ChatClientError("진행 상태 순서가 충돌했어요.", 502);
+        return;
+      }
+      if (progress.sequenceNo <= lastProgressSequence) throw new ChatClientError("진행 상태 순서가 올바르지 않아요.", 502);
+      progressTurn = progress.turnId; lastProgressSequence = progress.sequenceNo; progressFrames.set(progress.sequenceNo, fingerprint);
+      callbacks.onProgress?.(progress);
+      return;
+    }
     if (event === "delta") {
       if (typeof value.text !== "string" || !value.text || answer.length + value.text.length > MAX_REPLY_LENGTH) throw new ChatClientError("답변이 너무 길어요.", 502);
       answer += value.text;
@@ -287,6 +320,60 @@ export async function fetchChatHistory(sessionId: number, signal?: AbortSignal):
   return messages as ChatMessageDto[];
 }
 
+function turnPagePath(next: string, sessionId: number): string {
+  const origin = window.location?.origin ?? "http://localhost";
+  const expected = `/api/chat/sessions/${sessionId}/turns/`;
+  let url: URL;
+  try { url = new URL(next, `${origin}${expected}`); } catch { throw new ChatClientError("대화 진행 기록 다음 페이지 주소가 올바르지 않아요.", 502, false, sessionId); }
+  const page = url.searchParams.get("page");
+  if (url.origin !== origin || url.pathname !== expected || url.username || url.password || url.hash ||
+      [...url.searchParams.keys()].some(key => key !== "page") || !/^[1-9]\d*$/.test(page ?? "") || !Number.isSafeInteger(Number(page))) {
+    throw new ChatClientError("대화 진행 기록 다음 페이지 주소가 올바르지 않아요.", 502, false, sessionId);
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+function parseTurnPage(value: unknown, sessionId: number): ChatTurnPageDto {
+  if (!isRecord(value) || !Number.isSafeInteger(value.count) || Number(value.count) < 0 ||
+      (value.next !== null && typeof value.next !== "string") || (value.previous !== null && typeof value.previous !== "string") || !Array.isArray(value.results)) {
+    throw new ChatClientError("대화 진행 기록 응답을 확인하지 못했어요.", 502, false, sessionId);
+  }
+  for (const turn of value.results) {
+    if (!isRecord(turn) || !isUuid(turn.id) || typeof turn.question !== "string" || !turn.question.trim() || turn.question.length > 2000 ||
+        !["pending", "completed", "stopped", "failed"].includes(String(turn.status)) || !Number.isSafeInteger(turn.base_sequence) || Number(turn.base_sequence) < 0 ||
+        (turn.human_message_id !== null && (!Number.isSafeInteger(turn.human_message_id) || Number(turn.human_message_id) < 1)) ||
+        (turn.assistant_message_id !== null && (!Number.isSafeInteger(turn.assistant_message_id) || Number(turn.assistant_message_id) < 1)) || !Array.isArray(turn.progress)) {
+      throw new ChatClientError("대화 진행 기록 응답을 확인하지 못했어요.", 502, false, sessionId);
+    }
+    let sequence = 0;
+    for (const raw of turn.progress) {
+      const progress = parseProgressEvent(raw, turn.id);
+      if (!progress || progress.sequenceNo <= sequence) throw new ChatClientError("대화 진행 기록 순서가 올바르지 않아요.", 502, false, sessionId);
+      sequence = progress.sequenceNo;
+    }
+  }
+  return value as unknown as ChatTurnPageDto;
+}
+
+export async function fetchChatTurns(sessionId: number, signal?: AbortSignal): Promise<ChatTurnHistoryDto[]> {
+  const turns: ChatTurnHistoryDto[] = [];
+  let path = `/api/chat/sessions/${sessionId}/turns/?page=1`;
+  const seen = new Set<string>();
+  let expectedCount: number | undefined;
+  do {
+    if (seen.has(path)) throw new ChatClientError("대화 진행 기록 페이지가 반복돼요.", 502, false, sessionId);
+    seen.add(path);
+    const page = parseTurnPage(await memberRequest(path, { method: "GET" }, signal, readJson), sessionId);
+    if (expectedCount !== undefined && page.count !== expectedCount) throw new ChatClientError("대화 진행 기록 개수가 올바르지 않아요.", 502, false, sessionId);
+    expectedCount = page.count;
+    turns.push(...page.results);
+    path = page.next ? turnPagePath(page.next, sessionId) : "";
+    if (turns.length > page.count) throw new ChatClientError("대화 진행 기록 개수가 올바르지 않아요.", 502, false, sessionId);
+  } while (path);
+  if (turns.length !== expectedCount) throw new ChatClientError("대화 진행 기록 개수가 올바르지 않아요.", 502, false, sessionId);
+  return turns;
+}
+
 export async function sendNonStreamChatMessage(sessionId: number, content: string, signal?: AbortSignal): Promise<ChatNonStreamResponseDto> {
   const result = await memberRequest(`/api/chat/sessions/${sessionId}/messages/`, {
     method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ content }),
@@ -302,13 +389,33 @@ export async function getChatStatus(signal?: AbortSignal): Promise<ChatStatus> {
   return MEMBER_STATUS;
 }
 
+// The backend reads the selected stadium and map origin from these leading tags (llm/rag/pipeline.py).
+export function contextPrefix(context?: ChatRequest["context"]) {
+  if (!context) return "";
+  const tags = [
+    ...(context.stadium ? [`[선택한 구장: ${context.stadium}]`] : []),
+    ...(context.origin ? [`[출발지: ${context.origin.lat.toFixed(6)},${context.origin.lng.toFixed(6)}]`] : []),
+  ];
+  return tags.length ? `${tags.join("\n")}\n` : "";
+}
+
+function parseModelRequest(body: ChatRequest): ChatRequest {
+  return parseChatRequest({
+    ...body,
+    messages: body.messages.filter(message => !(
+      message.role === "assistant" && !message.content.trim() &&
+      (message.turnStatus === "pending" || message.turnStatus === "stopped" || message.turnStatus === "failed" || Array.isArray(message.progress))
+    )),
+  });
+}
+
 export async function sendChatMessage(body: ChatRequest, signal?: AbortSignal, callbacks: ChatStreamCallbacks = {}): Promise<ChatReply> {
-  const input = parseChatRequest(body), question = input.messages.at(-1)!.content;
+  const input = parseModelRequest(body), question = input.messages.at(-1)!.content;
   let sessionId = input.sessionId;
   if (!sessionId) {
     sessionId = (await createChatSession(question.slice(0, 80), signal)).id;
   }
-  const content = `${input.context?.stadium ? `[선택한 구장: ${input.context.stadium}]\n` : ""}${question}`;
+  const content = `${contextPrefix(input.context)}${question}`;
   try {
     return await memberRequest(`/api/chat/sessions/${sessionId}/messages/`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ content }),
@@ -320,11 +427,10 @@ export async function sendChatMessage(body: ChatRequest, signal?: AbortSignal, c
 }
 
 export async function sendGuestChatMessage(body: ChatRequest, signal?: AbortSignal, callbacks: ChatStreamCallbacks = {}): Promise<ChatReply> {
-  const input = parseChatRequest(body);
+  const input = parseModelRequest(body);
   const messages = input.messages.map((message, index) => ({
     ...message,
-    content: index === input.messages.length - 1 && input.context?.stadium
-      ? `[선택한 구장: ${input.context.stadium}]\n${message.content}` : message.content,
+    content: index === input.messages.length - 1 ? `${contextPrefix(input.context)}${message.content}` : message.content,
   }));
   return guestRequest("/api/chat/guest/", {
     method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ messages }),

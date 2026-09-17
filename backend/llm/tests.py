@@ -9,7 +9,7 @@ from django.test import override_settings
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableLambda
 from openai import OpenAIError
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 from drf_spectacular.generators import SchemaGenerator
 
 from .chat_service import ChatService
@@ -461,12 +461,12 @@ class ChatApiTest(APITestCase):
         self.assertNotIn("private provider detail", body)
         self.assertFalse(session.messages.exists())
 
-    @override_settings(CHAT_GUEST_RATE_LIMIT=1, CHAT_GUEST_RATE_WINDOW=60)
-    def test_guest_history_has_zero_database_writes_and_is_throttled_before_model(self):
+    def test_guest_questions_are_read_only_and_never_reach_the_model(self):
         cache.clear()
         before = (ChatSession.objects.count(), ChatMessage.objects.count(), ChatTurn.objects.count())
+        guest = APIClient()
         with patch.object(ChatService, "stream_with_history", return_value=iter(("답",))) as model:
-            response = self.client.post(
+            response = guest.post(
                 "/chat/guest/",
                 {"messages": [
                     {"role": "user", "content": "첫 질문"},
@@ -475,15 +475,6 @@ class ChatApiTest(APITestCase):
                 ]},
                 format="json", HTTP_ACCEPT="text/event-stream", REMOTE_ADDR="203.0.113.9",
             )
-            body = b"".join(response.streaming_content).decode()
-            throttled = self.client.post(
-                "/chat/guest/", {"messages": [{"role": "user", "content": "또 질문"}]},
-                format="json", HTTP_ACCEPT="text/event-stream", REMOTE_ADDR="203.0.113.9",
-            )
-        self.assertIn('event: done', body)
-        history, question = model.call_args.args
-        self.assertEqual([(m.type, m.content) for m in history], [("human", "첫 질문"), ("ai", "부분 답")])
-        self.assertEqual(question, "후속 질문")
-        self.assertEqual(throttled.status_code, 429)
-        self.assertEqual(model.call_count, 1)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(model.call_count, 0)
         self.assertEqual(before, (ChatSession.objects.count(), ChatMessage.objects.count(), ChatTurn.objects.count()))

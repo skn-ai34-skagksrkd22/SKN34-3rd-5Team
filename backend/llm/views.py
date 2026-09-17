@@ -1,14 +1,18 @@
 import hashlib
 import ipaddress
 import json
+import queue
+import threading
+import uuid
 from contextlib import suppress
 
 from django.conf import settings
 from django.core import signing
 from django.core.cache import cache
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.db.models import Max
 from django.http import StreamingHttpResponse
+from django.shortcuts import get_object_or_404
 from langchain_core.messages import AIMessage, HumanMessage
 from openai import OpenAIError
 from rest_framework import generics, serializers, status
@@ -17,13 +21,16 @@ from rest_framework.renderers import BaseRenderer, BrowsableAPIRenderer, JSONRen
 from rest_framework.response import Response
 from rest_framework.exceptions import APIException
 from drf_spectacular.utils import OpenApiResponse, PolymorphicProxySerializer, extend_schema, extend_schema_view
+from community.pagination import PublicPageNumberPagination
 
 from .chat_message_histories import DjangoChatMessageHistory
-from .chat_service import ChatService
-from .models import ChatMessage, ChatSession, ChatTurn
+from .chat_service import ChatService, StaleChatHistoryError
+from .models import ChatMessage, ChatProgressEvent, ChatSession, ChatTurn
+from .progress import ProgressCollector, collect, project_event
 from .rag.pipeline import last_detail
 from .serializers import (
     ChatCheckpointEventSerializer,
+    AdminChatProgressEventSerializer,
     ChatDeltaEventSerializer,
     ChatDoneEventSerializer,
     ChatErrorEventSerializer,
@@ -31,7 +38,9 @@ from .serializers import (
     ChatFinalizeSerializer,
     ChatMessageSerializer,
     ChatNonStreamResponseSerializer,
+    ChatProgressEventSerializer,
     ChatSessionSerializer,
+    ChatTurnSerializer,
     GuestChatDeltaEventSerializer,
     GuestChatDoneEventSerializer,
     GuestChatSerializer,
@@ -70,6 +79,58 @@ def course_meta():
     return {"places": d.get("places") or [], "coursePayload": d.get("coursePayload"), "route": d.get("route", ""),
             # 프론트 "내 코스에 담기" 카드용 — 어느 구장 지도에, 어떤 이동수단으로 그릴지
             "stadiumCode": d.get("stadiumCode"), "travel": d.get("travel")}
+
+
+def threaded_stream(stream_factory, collector, detail_getter=course_meta):
+    output = collector.output
+    cancelled = threading.Event()
+    finished = False
+
+    def put(item):
+        while not cancelled.is_set():
+            try:
+                output.put(item, timeout=0.1)
+                return
+            except queue.Full:
+                continue
+
+    def produce():
+        stream = None
+        close_old_connections()
+        try:
+            with collect(collector):
+                stream = stream_factory()
+                for chunk in stream:
+                    if cancelled.is_set():
+                        break
+                    put(("delta", chunk))
+                if not cancelled.is_set():
+                    put(("done", detail_getter() or {}))
+        except Exception as exc:
+            put(("error", exc))
+        finally:
+            close = getattr(stream, "close", None)
+            if close:
+                with suppress(Exception):
+                    close()
+            close_old_connections()
+
+    thread = threading.Thread(target=produce, name="chat-progress-producer", daemon=True)
+    thread.start()
+    try:
+        while True:
+            item = output.get()
+            if item[0] in {"done", "error"}:
+                finished = True
+            yield item
+            if item[0] in {"done", "error"}:
+                break
+    finally:
+        cancelled.set()
+        if finished:
+            collector.cancelled = True
+        else:
+            collector.cancel(persist=collector.persistent)
 
 
 def checkpoint_receipt(turn, prefix, complete=False):
@@ -130,6 +191,7 @@ class ChatRoomDetailView(generics.RetrieveUpdateDestroyAPIView):
                         ChatCheckpointEventSerializer,
                         ChatDeltaEventSerializer,
                         ChatDoneEventSerializer,
+                        ChatProgressEventSerializer,
                         ChatErrorEventSerializer,
                     ),
                     resource_type_field_name=None,
@@ -164,16 +226,24 @@ class ChatMessageView(generics.ListCreateAPIView):
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
             turn = self.create_turn(session.pk, request.user.pk, question)
-            return self.stream_response(request.user.pk, session.pk, turn)
-        try:
-            answer, saved = ChatService().invoke_with_messages(
-                request.user.pk, session.pk, question
+            return self.stream_response(
+                request.user.pk, session.pk, turn,
+                include_details=request.user.is_staff or request.user.is_superuser,
             )
+        try:
+            turn = self.create_turn(session.pk, request.user.pk, question)
+            collector = ProgressCollector(turn.pk, persistent=True)
+            with collect(collector):
+                answer, saved = ChatService().invoke_with_messages(
+                    request.user.pk, session.pk, question, turn=turn
+                )
         except OpenAIError:
             return Response(
                 {"detail": "LLM 응답 생성에 실패했습니다. 다시 시도해 주세요."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
+        except StaleChatHistoryError:
+            raise Conflict
         human, assistant = saved
         return Response(
             {
@@ -183,6 +253,14 @@ class ChatMessageView(generics.ListCreateAPIView):
                 "status": "completed",
                 "user_message_id": human.pk,
                 "assistant_message_id": assistant.pk,
+                "turn_id": str(turn.pk),
+                "progress": (
+                    AdminChatProgressEventSerializer
+                    if request.user.is_staff or request.user.is_superuser
+                    else ChatProgressEventSerializer
+                )(
+                    turn.progress_events.all(), many=True
+                ).data,
                 **(course_meta() or {}),
             },
             status=status.HTTP_201_CREATED,
@@ -198,16 +276,41 @@ class ChatMessageView(generics.ListCreateAPIView):
         )
 
     @staticmethod
-    def stream_response(user_id, session_id, turn):
+    def stream_response(user_id, session_id, turn, include_details=False):
+        service = ChatService()
+        history = service.get_chat_history(user_id, session_id).messages
+
         def events():
-            stream, answer = None, ""
+            answer = ""
             try:
                 yield sse(
                     "checkpoint",
                     {"turn_id": str(turn.pk), "receipt": checkpoint_receipt(turn, "")},
                 )
-                stream = ChatService().stream(user_id, session_id, turn.question)
-                for chunk in stream:
+                output = queue.Queue(maxsize=64)
+                collector = ProgressCollector(turn.pk, persistent=True, output=output)
+                for event, payload in threaded_stream(
+                    lambda: service.stream_with_history(history, turn.question), collector
+                ):
+                    if event == "progress":
+                        yield sse("progress", project_event(payload, include_details))
+                        continue
+                    if event == "error":
+                        ChatTurn.objects.filter(pk=turn.pk, status="pending").update(status="failed")
+                        raise payload
+                    if event == "done":
+                        if not answer.strip():
+                            raise ValueError("Empty LLM response")
+                        yield sse(
+                            "done",
+                            {
+                                "turn_id": str(turn.pk),
+                                "receipt": checkpoint_receipt(turn, answer, complete=True),
+                                **payload,
+                            },
+                        )
+                        break
+                    chunk = payload
                     answer += chunk
                     yield sse(
                         "delta",
@@ -217,32 +320,40 @@ class ChatMessageView(generics.ListCreateAPIView):
                             "receipt": checkpoint_receipt(turn, answer),
                         },
                     )
-                if not answer.strip():
-                    raise ValueError("Empty LLM response")
-                yield sse(
-                    "done",
-                    {
-                        "turn_id": str(turn.pk),
-                        "receipt": checkpoint_receipt(turn, answer, complete=True),
-                        # 코스 추천일 때만 붙는다. 프론트 파서는 done 의 모르는 키를 무시하므로
-                        # 화면 수정 전에도 안 깨지고, 지도 카드·코스 저장 버튼이 붙을 때 읽어 쓰면 된다.
-                        **(course_meta() or {}),
-                    },
-                )
             except GeneratorExit:
                 raise
             except Exception:
                 yield sse("error", {"detail": "답변 생성에 실패했습니다. 다시 시도해 주세요."})
-            finally:
-                close = getattr(stream, "close", None)
-                if close:
-                    with suppress(Exception):
-                        close()
 
         response = StreamingHttpResponse(events(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache, no-transform"
         response["X-Accel-Buffering"] = "no"
         return response
+
+
+class ChatTurnPagination(PublicPageNumberPagination):
+    page_size = 20
+    max_page_size = 50
+
+    def get_paginated_response_schema(self, schema):
+        paginated = super().get_paginated_response_schema(schema)
+        paginated["required"] = ["count", "next", "previous", "results"]
+        return paginated
+
+
+@extend_schema_view(get=extend_schema(responses=ChatTurnSerializer(many=True)))
+class ChatTurnListView(generics.ListAPIView):
+    serializer_class = ChatTurnSerializer
+    permission_classes = (IsAuthenticated,)
+    pagination_class = ChatTurnPagination
+
+    def get_queryset(self):
+        get_object_or_404(
+            ChatSession, pk=self.kwargs["session_id"], user=self.request.user
+        )
+        return ChatTurn.objects.filter(
+            session_id=self.kwargs["session_id"], session__user=self.request.user
+        ).prefetch_related("progress_events").order_by("created_at", "id")
 
 
 class ChatFinalizeView(generics.GenericAPIView):
@@ -363,8 +474,7 @@ def guest_rate_limited(request):
 
 class GuestChatView(generics.GenericAPIView):
     serializer_class = GuestChatSerializer
-    permission_classes = (AllowAny,)
-    authentication_classes = ()
+    permission_classes = (IsAuthenticated,)
     renderer_classes = (JSONRenderer, EventStreamRenderer)
 
     @extend_schema(
@@ -376,6 +486,7 @@ class GuestChatView(generics.GenericAPIView):
                     serializers=(
                         GuestChatDeltaEventSerializer,
                         GuestChatDoneEventSerializer,
+                        ChatProgressEventSerializer,
                         ChatErrorEventSerializer,
                     ),
                     resource_type_field_name=None,
@@ -398,26 +509,33 @@ class GuestChatView(generics.GenericAPIView):
             (HumanMessage if item["role"] == "user" else AIMessage)(content=item["content"])
             for item in messages[:-1]
         ]
+        guest_turn_id = uuid.uuid4()
 
         def events():
-            stream, answer = None, ""
+            answer = ""
             try:
-                stream = ChatService().stream_with_history(history, question)
-                for chunk in stream:
+                output = queue.Queue(maxsize=64)
+                collector = ProgressCollector(guest_turn_id, output=output)
+                for event, payload in threaded_stream(
+                    lambda: ChatService().stream_with_history(history, question), collector
+                ):
+                    if event == "progress":
+                        yield sse("progress", project_event(payload))
+                        continue
+                    if event == "error":
+                        raise payload
+                    if event == "done":
+                        if not answer.strip():
+                            raise ValueError("Empty LLM response")
+                        yield sse("done", {"assistant_message": answer, **payload})
+                        break
+                    chunk = payload
                     answer += chunk
                     yield sse("delta", {"text": chunk})
-                if not answer.strip():
-                    raise ValueError("Empty LLM response")
-                yield sse("done", {"assistant_message": answer, **(course_meta() or {})})
             except GeneratorExit:
                 raise
             except Exception:
                 yield sse("error", {"detail": "답변 생성에 실패했습니다. 다시 시도해 주세요."})
-            finally:
-                close = getattr(stream, "close", None)
-                if close:
-                    with suppress(Exception):
-                        close()
 
         response = StreamingHttpResponse(events(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache, no-transform"

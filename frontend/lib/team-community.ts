@@ -25,3 +25,10 @@ export function getTeamBoardHref(code?: string, postId?: string) {
   if (postId) params.set("post", postId);
   return `/community/teams${params.size ? `?${params.toString()}` : ""}`;
 }
+
+export function getCommunityWriteHref(board: "free" | "teams", code = "") {
+  const params = new URLSearchParams({ board });
+  const team = board === "teams" ? getTeamBoard(code) : undefined;
+  if (team) params.set("team", team.code);
+  return `/community/write?${params.toString()}`;
+}

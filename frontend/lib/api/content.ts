@@ -1,17 +1,18 @@
 import type { components } from "./schema";
+import type { RichContentDoc } from "../community-rich-content";
 
 type Schemas = components["schemas"];
 
-export type CourseDto = Schemas["Course"];
-export type CourseCreateRequestDto = Schemas["CourseCreateRequest"];
-export type CoursePatchRequestDto = Schemas["PatchedCoursePatchRequest"];
-export type CourseCreateResultDto = Schemas["CourseCreateResult"];
+export type CourseDto = Schemas["Course"] & { contentDoc?: RichContentDoc | null };
+export type CourseCreateRequestDto = Schemas["CourseCreateRequest"] & { contentDoc?: RichContentDoc | null };
+export type CoursePatchRequestDto = Schemas["PatchedCoursePatchRequest"] & { contentDoc?: RichContentDoc | null };
+export type CourseCreateResultDto = Schemas["CourseCreateResult"] & { contentDoc?: RichContentDoc | null };
 export type CourseReactionRequestDto = Schemas["CourseReactionRequest"];
 export type CourseReactionDto = Schemas["CourseReaction"];
 export type CourseViewResultDto = Schemas["CourseViewResult"];
-export type CommunityPostWriteDto = Schemas["CommunityPostWrite"];
-export type CommunityPostPatchDto = Schemas["PatchedCommunityPostPatch"];
-export type CommunityPostDto = Schemas["CommunityPost"];
+export type CommunityPostWriteDto = Schemas["CommunityPostWrite"] & { contentDoc?: RichContentDoc | null };
+export type CommunityPostPatchDto = Schemas["PatchedCommunityPostPatch"] & { contentDoc?: RichContentDoc | null };
+export type CommunityPostDto = Schemas["CommunityPost"] & { contentDoc?: RichContentDoc | null };
 export type CommunityCommentWriteDto = Schemas["CommunityCommentWrite"];
 export type CommunityCommentDto = Schemas["CommunityComment"];
 export type CommunityVoteWriteDto = Schemas["CommunityVoteWrite"];

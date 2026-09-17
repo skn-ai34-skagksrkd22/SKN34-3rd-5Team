@@ -3,6 +3,7 @@ import type { RouteStop, TripRoute } from "./routes";
 import type { RouteContentFormat } from "./route-content";
 import { getStadium } from "./stadiums";
 import { createClientId } from "./client-id";
+import { isRichContentDoc, type RichContentDoc } from "./community-rich-content";
 
 export const ROUTE_DRAFT_PREFIX = "kbo-trip-route-draft-v1:";
 export const ROUTE_DRAFT_VERSION = 1;
@@ -12,6 +13,7 @@ export type RouteDraftData = {
   title: string;
   content: string;
   contentFormat?: RouteContentFormat;
+  contentDoc?: RichContentDoc | null;
   duration: string;
   tags: string[];
   stops: RouteStop[];
@@ -48,9 +50,10 @@ const isStop = (value: unknown): value is RouteStop => {
 export function isRouteDraftData(value: unknown): value is RouteDraftData {
   if (!value || typeof value !== "object") return false;
   const data = value as Record<string, unknown>;
-  return hasOnlyKeys(data, ["stadiumCode", "title", "content", "contentFormat", "duration", "tags", "stops", "start", "tab", "travelMode"])
+  return hasOnlyKeys(data, ["stadiumCode", "title", "content", "contentDoc", "contentFormat", "duration", "tags", "stops", "start", "tab", "travelMode"])
     && typeof data.stadiumCode === "string" && Boolean(getStadium(data.stadiumCode)) && typeof data.title === "string" && typeof data.content === "string"
     && (data.contentFormat === undefined || data.contentFormat === "html") && typeof data.duration === "string"
+    && (data.contentDoc === undefined || data.contentDoc === null || isRichContentDoc(data.contentDoc))
     && Array.isArray(data.tags) && data.tags.every(tag => typeof tag === "string")
     && Array.isArray(data.stops) && data.stops.every(isStop)
     && (data.start === undefined || (data.start !== null && typeof data.start === "object" && areValidCoordinates((data.start as Record<string, unknown>).lat, (data.start as Record<string, unknown>).lng)))

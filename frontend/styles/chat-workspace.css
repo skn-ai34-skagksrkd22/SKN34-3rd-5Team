@@ -32,6 +32,14 @@
 .workspace-history-item:hover { background: #eaf0f9; }
 .workspace-history-item.is-current { background: #e7effc; color: #245daE; font-weight: 550; }
 .workspace-history-item:disabled { cursor: not-allowed; opacity: .6; }
+/* 대화 내역 한 줄: 마우스를 올리면 오른쪽에 삭제(X) 버튼 */
+.workspace-history-row { position: relative; min-width: 0; border-radius: 9px; }
+.workspace-history-row .workspace-history-item { padding-right: 38px; }
+.workspace-history-delete { position: absolute; top: 50%; right: 7px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #8a97ab; opacity: 0; transform: translateY(-50%); transition: opacity .15s, background .15s, color .15s; }
+.workspace-history-row:hover .workspace-history-delete, .workspace-history-delete:focus-visible { opacity: 1; }
+.workspace-history-delete:hover { background: #fde8eb; color: #d23b4b; }
+.workspace-history-delete:disabled { opacity: 0 !important; pointer-events: none; }
+@media (hover: none) { .workspace-history-delete { opacity: 1; } }
 .workspace-history-empty { padding: 8px 13px; font-size: 12px; line-height: 1.9; color: #a0acbd; }
 .workspace-quick-links { display: grid; gap: 2px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #e3eaf5; }
 .workspace-quick-links > span { padding: 0 13px 10px; color: #98a4b5; font-size: 10px; }
@@ -93,6 +101,7 @@
 .chat-workspace .chat-answer pre { padding: 16px 18px; overflow-x: auto; border: 1px solid #e4eaf4; border-radius: 12px; background: #f6f8fc; line-height: 1.75; }
 .chat-workspace .chat-answer pre code { padding: 0; background: transparent; white-space: pre; }
 .workspace-thinking { display: flex; align-items: center; gap: 6px; height: 29px; margin-left: 35px; }
+.workspace-thinking > span { margin-right: 2px; color: #8191a8; font-size: 12px; }
 .workspace-thinking i { width: 6px; height: 6px; border-radius: 50%; background: #94b3e0; animation: workspace-thinking 1.3s ease-in-out infinite; }
 .workspace-thinking i:nth-of-type(2) { animation-delay: .15s; }
 .workspace-thinking i:nth-of-type(3) { animation-delay: .3s; }
@@ -102,6 +111,9 @@
 .workspace-feedback button:disabled { opacity: .5; }
 .workspace-notice { margin-top: 23px; color: #94a1b4; font-size: 11px; text-align: center; }
 .workspace-composer-area { flex-shrink: 0; width: 100%; max-width: 828px; margin-inline: auto; padding: 12px 34px 20px; background: #fff; }
+.workspace-guest-cta { text-align: center; }
+.workspace-guest-cta a { display: block; padding: 14px; border-radius: 12px; background: #246bf3; color: #fff; font-size: 14px; font-weight: 700; }
+.workspace-guest-cta p { margin-top: 9px; color: #8e9eb3; font-size: 12px; }
 .workspace-composer { width: 100%; padding: 19px 16px 11px 21px; border: 1px solid #dae5f5; border-radius: 24px; background: #fff; box-shadow: 0 4px 20px #223f6d08; transition: border-color .2s, box-shadow .2s; }
 .workspace-composer:focus-within { border-color: #aac6f0; box-shadow: 0 4px 24px #246bf310; }
 .workspace-composer textarea { display: block; width: 100%; min-height: 27px; max-height: 176px; padding: 0 4px 0 0; margin: 0; border: 0; outline: 0; resize: none; background: transparent; color: #384c68; font-size: 15px; line-height: 1.8; scrollbar-width: thin; }

@@ -24,7 +24,7 @@ function routeFromApi(value: CourseDto, owned = Boolean(token(value.id)), saveWa
   const description = value.description || (value.content?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || stops.map(stop => stop.name).join(" → ")).slice(0, 100);
   return {
     id: value.sampleId ?? value.id, ...(value.sampleId ? { apiId: value.id } : {}), routeNumber: value.routeNumber, title: value.title, stadium: value.stadium, description, content: value.content ?? "",
-    ...(value.contentFormat ? { contentFormat: value.contentFormat } : {}), tags: value.tags, duration: value.duration,
+    ...(value.contentFormat ? { contentFormat: value.contentFormat } : {}), ...(value.contentDoc ? { contentDoc: value.contentDoc } : {}), tags: value.tags, duration: value.duration,
     cover: value.cover || "/images/stadium-night.jpg", stops, ...(value.startLat !== undefined && value.startLng !== undefined ? { start: { lat: value.startLat, lng: value.startLng } } : {}),
     author: value.author, likes: value.likes ?? 0, views: value.views ?? 0, isSample: value.isSample ?? false, owned: value.isSample ? false : owned, createdAt: value.createdAt, ...(saveWarning ? { saveWarning } : {}),
   };
@@ -32,7 +32,7 @@ function routeFromApi(value: CourseDto, owned = Boolean(token(value.id)), saveWa
 
 function payload(route: TripRoute, editing: boolean): CourseCreateRequestDto | CoursePatchRequestDto {
   return {
-    title: route.title, stadium: route.stadium, content: route.content, contentFormat: route.contentFormat ?? "",
+    title: route.title, stadium: route.stadium, content: route.content, contentDoc: route.contentDoc ?? null, contentFormat: route.contentFormat ?? "",
     duration: route.duration, tags: route.tags, ...(route.start ? { startLat: route.start.lat, startLng: route.start.lng } : editing ? { startLat: null, startLng: null } : {}),
     stops: route.stops.map((stop, position) => ({ ...stop, position })),
   };
@@ -57,7 +57,7 @@ export async function fetchCourses(fetcher: Fetcher = fetch): Promise<TripRoute[
 export async function persistCourse(route: TripRoute, fetcher: Fetcher = fetch): Promise<TripRoute> {
   const editToken = route.id ? token(route.id) : "";
   if (route.id && route.owned && !route.legacy && !editToken) throw new Error("이 코스의 편집 토큰을 찾을 수 없어 읽기만 가능해요.");
-  const response = await courseRequest<CourseDto | CourseCreateResultDto>(fetcher, editToken ? `/api/courses/${encodeURIComponent(route.id)}/` : "/api/courses/", {
+  const response = await courseRequest<CourseDto | CourseCreateResultDto>(fetcher === fetch ? memberFetch : fetcher, editToken ? `/api/courses/${encodeURIComponent(route.id)}/` : "/api/courses/", {
     method: editToken ? "PATCH" : "POST",
     headers: { "Content-Type": "application/json", ...(editToken ? { "X-Course-Edit-Token": editToken } : {}) },
     body: JSON.stringify(payload(route, Boolean(editToken))),
@@ -96,7 +96,7 @@ export async function recordCourseView(id: string, viewToken: string, fetcher: F
 export async function removeCourse(id: string, fetcher: Fetcher = fetch): Promise<void> {
   const editToken = token(id);
   if (!editToken) throw new Error("이 코스의 편집 토큰을 찾을 수 없어 삭제할 수 없어요.");
-  await courseRequest(fetcher, `/api/courses/${encodeURIComponent(id)}/`, { method: "DELETE", headers: { "X-Course-Edit-Token": editToken } });
+  await courseRequest(fetcher === fetch ? memberFetch : fetcher, `/api/courses/${encodeURIComponent(id)}/`, { method: "DELETE", headers: { "X-Course-Edit-Token": editToken } });
   sessionTokens.delete(id);
   try { window.localStorage.removeItem(`${TOKEN_PREFIX}${id}`); } catch {}
 }
